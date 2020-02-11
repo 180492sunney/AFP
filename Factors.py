@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 from pdb import set_trace
+
 class Factors:
     def __init__(self):
         self.fundamentals = pd.read_csv('Fundamentals.csv')
@@ -17,7 +18,7 @@ class Factors:
             self.vol['date'] = pd.to_datetime(self.vol['date'])
             self.vol['month'] = self.vol['date'].dt.month
             self.vol['year'] = self.vol['date'].dt.year
-            self.betas['DATE'] = pd.to_datetime(self.betas['DATE'])
+            self.betas['DATE'] = pd.to_datetime(self.betas['DATE'], format='%Y%m%d')
             self.betas['month'] = self.betas['DATE'].dt.month
             self.betas['year'] = self.betas['DATE'].dt.year
 
@@ -29,11 +30,12 @@ class Factors:
             self.fundamentals = pd.merge(self.fundamentals, self.industry_class[['Symbol','GICS Sector']], left_on=['Ticker'], right_on=['Symbol'],
                                          how='inner')
             self.fundamentals.rename(columns={"GICS Sector": "Industry"}, inplace=True)
+            self.fundamentals.to_csv('processed_fundamentals.csv')
         else:
             self.fundamentals = pd.read_csv('processed_fundamentals.csv')
 
-        self.fundamentals = self.fundamentals.groupby('Ticker', as_index=False).fillna(method='backfill')
-        self.fundamentals = self.fundamentals.groupby('Ticker', as_index=False).fillna(method='ffill')
+        #self.fundamentals = self.fundamentals.groupby('Ticker', as_index=False).fillna(method='backfill')
+        #self.fundamentals = self.fundamentals.groupby('Ticker', as_index=False).fillna(method='ffill')
 
 
 
@@ -68,6 +70,7 @@ class PriceData:
         price_df = self.download_data(filepath)
         price_df = price_df[['TICKER', 'date', 'PRC']]
         price_df['date'] = pd.to_datetime(price_df['date'], format='%Y%m%d')
+        price_df.drop_duplicates(keep = 'first', inplace = True)
         price_df['ret'] = price_df.groupby(['TICKER'], as_index=False).PRC.pct_change()
         price_df.dropna(how='any', axis=0, inplace=True)
 
@@ -92,6 +95,36 @@ class PriceData:
         return price_df
 
 
+class Training:
+
+    def __init__(self, data, window):
+        self.data = data
+        self.window = window  # in months
+
+    def get_cleaned_date(self, startDate):
+        data_processed = self.data[(self.data['public_date'] >= startDate) & (
+                    self.data['public_date'] < (startDate + pd.DateOffset(months=self.window)))]
+        data_processed = data_processed.groupby('Ticker', as_index=False).fillna(method='backfill')
+        data_processed = data_processed.groupby('Ticker', as_index=False).fillna(method='ffill')
+        # regress_cols = ['Ticker', 'public_date', 'bm', 'pe_exi', 'pe_op_dil', 'evm', 'debt_at', 'de_ratio', 'liquidity', 'roe', 'roa', 'roce', 'DIVYIELD', 'dpr', 'intcov_ratio', 'debt_ebitda', 'rect_turn', 'pay_turn', 'at_turn', 'inv_turn', 'cash_ratio', 'quick_ratio', 'curr_ratio', 'cash_conversion', '1M_vol', '3M_vol', 'debt_cov', 'Industry', '3M_mom', '12M_mom', 'b_mkt', 'b_smb', 'b_hml', 'b_umd']
+        regress_cols = ['Ticker', 'public_date', 'bm', 'pe_exi', 'pe_op_dil', 'evm', 'debt_at', 'de_ratio', 'liquidity',
+                        'roe', 'roa', 'roce', 'dpr', 'intcov_ratio', 'debt_ebitda', 'rect_turn', 'pay_turn', 'at_turn',
+                        'inv_turn', 'cash_ratio', 'quick_ratio', 'curr_ratio', 'cash_conversion', '1M_vol', '3M_vol',
+                        'debt_cov', 'Industry', '3M_mom', '12M_mom', 'b_mkt', 'b_smb', 'b_hml', 'b_umd']
+        data_processed = data_processed[regress_cols]
+        null_aggr = data_processed.isnull().sum()
+        null_aggr_list = null_aggr[null_aggr != 0].index.tolist()
+        for col in null_aggr_list:
+            a = data_processed.groupby('Ticker').apply(lambda x: x[col].isnull().sum())
+            empty_tickers = a[a != 0].index.tolist()
+            for ticker in empty_tickers:
+                # print(col, ticker)
+                ind = data_processed[data_processed['Ticker'] == ticker]['Industry'].head(1).values[0]
+                data_processed.loc[data_processed[data_processed['Ticker'] == ticker].index.tolist(), col] = \
+                data_processed[data_processed['Industry'] == ind][col].mean()
+        return data_processed
+
+
 price_filepath = 'price_data.csv'
 data = PriceData(price_filepath)
 price_df = data.calc_monthly_price(price_filepath)
@@ -101,3 +134,8 @@ factors.combine_data()
 f = factors.get_factors_df()
 
 reg_df = pd.merge(f,price_df,left_on =['Ticker','year','month'],right_on=['TICKER','year','month'],how='inner')
+print(reg_df.shape)
+
+train = Training(reg_df, 12)
+proc_data = train.get_cleaned_date(pd.to_datetime('2014-02-28'))
+print(proc_data.shape)
