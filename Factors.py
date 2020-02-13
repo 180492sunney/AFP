@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 from pdb import set_trace
+from sklearn.metrics import confusion_matrix
 
 class Factors:
     def __init__(self):
@@ -97,7 +98,7 @@ class PriceData:
 
 class Training:
 
-    def __init__(self, data, window):
+    def __init__(self, data, window=12):
         self.data = data
         self.window = window  # in months
 
@@ -106,11 +107,11 @@ class Training:
                     self.data['public_date'] < (startDate + pd.DateOffset(months=self.window)))]
         data_processed = data_processed.groupby('Ticker', as_index=False).fillna(method='backfill')
         data_processed = data_processed.groupby('Ticker', as_index=False).fillna(method='ffill')
-        # regress_cols = ['Ticker', 'public_date', 'bm', 'pe_exi', 'pe_op_dil', 'evm', 'debt_at', 'de_ratio', 'liquidity', 'roe', 'roa', 'roce', 'DIVYIELD', 'dpr', 'intcov_ratio', 'debt_ebitda', 'rect_turn', 'pay_turn', 'at_turn', 'inv_turn', 'cash_ratio', 'quick_ratio', 'curr_ratio', 'cash_conversion', '1M_vol', '3M_vol', 'debt_cov', 'Industry', '3M_mom', '12M_mom', 'b_mkt', 'b_smb', 'b_hml', 'b_umd']
+        # regress_cols = ['Ticker', 'public_date', 'bm', 'pe_exi', 'pe_op_dil', 'evm', 'debt_at', 'de_ratio', 'liquidity', 'roe', 'roa', 'roce', 'DIVYIELD', 'dpr', 'intcov_ratio', 'debt_ebitda', 'rect_turn', 'pay_turn', 'at_turn', 'inv_turn', 'cash_ratio', 'quick_ratio', 'curr_ratio', 'cash_conversion', '1M_vol', '3M_vol', 'debt_cov', 'Industry', '3M_mom', '12M_mom', 'b_mkt', 'b_smb', 'b_hml', 'b_umd', 'quantile']
         regress_cols = ['Ticker', 'public_date', 'bm', 'pe_exi', 'pe_op_dil', 'evm', 'debt_at', 'de_ratio', 'liquidity',
                         'roe', 'roa', 'roce', 'dpr', 'intcov_ratio', 'debt_ebitda', 'rect_turn', 'pay_turn', 'at_turn',
                         'inv_turn', 'cash_ratio', 'quick_ratio', 'curr_ratio', 'cash_conversion', '1M_vol', '3M_vol',
-                        'debt_cov', 'Industry', '3M_mom', '12M_mom', 'b_mkt', 'b_smb', 'b_hml', 'b_umd']
+                        'debt_cov', 'Industry', '3M_mom', '12M_mom', 'b_mkt', 'b_smb', 'b_hml', 'b_umd', 'quantile']
         data_processed = data_processed[regress_cols]
         null_aggr = data_processed.isnull().sum()
         null_aggr_list = null_aggr[null_aggr != 0].index.tolist()
@@ -124,6 +125,24 @@ class Training:
                 data_processed[data_processed['Industry'] == ind][col].mean()
         return data_processed
 
+    def adaBoost_train(self, train_data):
+        from sklearn.ensemble import AdaBoostClassifier
+        from sklearn.tree import DecisionTreeClassifier
+        from sklearn.model_selection import train_test_split
+
+        train_data = train_data[train_data['debt_cov'] != float("inf")]
+        X = train_data.drop(columns=['Ticker', 'public_date', 'Industry', 'quantile'])
+        y = train_data['quantile']
+        train_X, test_X, train_y, test_y = train_test_split(X, y, random_state=1)
+        print(train_X.shape)
+        print(test_X.shape)
+        print(train_y.shape)
+        print(test_y.shape)
+        classifier = AdaBoostClassifier(DecisionTreeClassifier(max_depth=1), n_estimators=200)
+        classifier.fit(train_X, train_y)
+        predictions = classifier.predict(test_X)
+        print(confusion_matrix(test_y, predictions))
+
 
 price_filepath = 'price_data.csv'
 data = PriceData(price_filepath)
@@ -136,6 +155,8 @@ f = factors.get_factors_df()
 reg_df = pd.merge(f,price_df,left_on =['Ticker','year','month'],right_on=['TICKER','year','month'],how='inner')
 print(reg_df.shape)
 
-train = Training(reg_df, 12)
+train = Training(reg_df)
 proc_data = train.get_cleaned_date(pd.to_datetime('2014-02-28'))
 print(proc_data.shape)
+
+train.adaBoost_train(proc_data)
