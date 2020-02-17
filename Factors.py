@@ -98,20 +98,20 @@ class PriceData:
 
 class Training:
 
-    def __init__(self, data, window=12):
+    def __init__(self, data):
         self.data = data
-        self.window = window  # in months
 
-    def get_cleaned_date(self, startDate):
+    def get_cleaned_date(self, startDate, trainWindow, testWindow):
         data_processed = self.data[(self.data['public_date'] >= startDate) & (
-                    self.data['public_date'] < (startDate + pd.DateOffset(months=self.window)))]
+                    self.data['public_date'] < (startDate + pd.DateOffset(months=(trainWindow + testWindow))))]
         data_processed = data_processed.groupby('Ticker', as_index=False).fillna(method='backfill')
         data_processed = data_processed.groupby('Ticker', as_index=False).fillna(method='ffill')
         # regress_cols = ['Ticker', 'public_date', 'bm', 'pe_exi', 'pe_op_dil', 'evm', 'debt_at', 'de_ratio', 'liquidity', 'roe', 'roa', 'roce', 'DIVYIELD', 'dpr', 'intcov_ratio', 'debt_ebitda', 'rect_turn', 'pay_turn', 'at_turn', 'inv_turn', 'cash_ratio', 'quick_ratio', 'curr_ratio', 'cash_conversion', '1M_vol', '3M_vol', 'debt_cov', 'Industry', '3M_mom', '12M_mom', 'b_mkt', 'b_smb', 'b_hml', 'b_umd', 'quantile']
+        # regress_cols = ['Ticker', 'public_date', 'bm', 'pe_exi', 'pe_op_dil', 'evm', 'debt_at', 'de_ratio', 'liquidity', 'roe', 'roa', 'roce', 'dpr', 'intcov_ratio', 'debt_ebitda', 'rect_turn', 'pay_turn', 'at_turn', 'inv_turn', 'cash_ratio', 'quick_ratio', 'curr_ratio', 'cash_conversion', '1M_vol', '3M_vol', 'debt_cov', 'Industry', '3M_mom', '12M_mom', 'b_mkt', 'b_smb', 'b_hml', 'b_umd', 'quantile']
         regress_cols = ['Ticker', 'public_date', 'bm', 'pe_exi', 'pe_op_dil', 'evm', 'debt_at', 'de_ratio', 'liquidity',
                         'roe', 'roa', 'roce', 'dpr', 'intcov_ratio', 'debt_ebitda', 'rect_turn', 'pay_turn', 'at_turn',
                         'inv_turn', 'cash_ratio', 'quick_ratio', 'curr_ratio', 'cash_conversion', '1M_vol', '3M_vol',
-                        'debt_cov', 'Industry', '3M_mom', '12M_mom', 'b_mkt', 'b_smb', 'b_hml', 'b_umd', 'quantile']
+                        'Industry', '3M_mom', '12M_mom', 'b_mkt', 'b_smb', 'b_hml', 'b_umd', 'quantile']
         data_processed = data_processed[regress_cols]
         null_aggr = data_processed.isnull().sum()
         null_aggr_list = null_aggr[null_aggr != 0].index.tolist()
@@ -123,21 +123,31 @@ class Training:
                 ind = data_processed[data_processed['Ticker'] == ticker]['Industry'].head(1).values[0]
                 data_processed.loc[data_processed[data_processed['Ticker'] == ticker].index.tolist(), col] = \
                 data_processed[data_processed['Industry'] == ind][col].mean()
-        return data_processed
+        train_data = data_processed[(data_processed['public_date'] >= startDate) & (
+                    data_processed['public_date'] < (startDate + pd.DateOffset(months=trainWindow)))]
+        test_data = data_processed[
+            (data_processed['public_date'] >= (startDate + pd.DateOffset(months=trainWindow))) & (
+                        data_processed['public_date'] < (startDate + pd.DateOffset(months=(trainWindow + testWindow))))]
+        return train_data, test_data
 
-    def adaBoost_train(self, train_data):
+    def adaBoost_train(self, train_data, test_data):
         from sklearn.ensemble import AdaBoostClassifier
         from sklearn.tree import DecisionTreeClassifier
         from sklearn.model_selection import train_test_split
 
-        train_data = train_data[train_data['debt_cov'] != float("inf")]
-        X = train_data.drop(columns=['Ticker', 'public_date', 'Industry', 'quantile'])
-        y = train_data['quantile']
-        train_X, test_X, train_y, test_y = train_test_split(X, y, random_state=1)
+        # train_data = train_data[train_data['debt_cov'] != float("inf")]
+        # test_data = test_data[test_data['debt_cov'] != float("inf")]
+        # X = train_data.drop(columns=['Ticker', 'public_date', 'Industry', 'quantile'])
+        # y = train_data['quantile']
+        # train_X, test_X, train_y, test_y = train_test_split(X, y, random_state=1)
+        train_X = train_data.drop(columns=['Ticker', 'public_date', 'Industry', 'quantile'])
+        train_y = train_data['quantile']
+        test_X = test_data.drop(columns=['Ticker', 'public_date', 'Industry', 'quantile'])
+        test_y = test_data['quantile']
         print(train_X.shape)
         print(test_X.shape)
-        print(train_y.shape)
-        print(test_y.shape)
+        # print(train_y.shape)
+        # print(test_y.shape)
         classifier = AdaBoostClassifier(DecisionTreeClassifier(max_depth=1), n_estimators=200)
         classifier.fit(train_X, train_y)
         predictions = classifier.predict(test_X)
@@ -156,7 +166,6 @@ reg_df = pd.merge(f,price_df,left_on =['Ticker','year','month'],right_on=['TICKE
 print(reg_df.shape)
 
 train = Training(reg_df)
-proc_data = train.get_cleaned_date(pd.to_datetime('2014-02-28'))
-print(proc_data.shape)
+train_data, test_data = train.get_cleaned_date(pd.to_datetime('2014-02-28'), 12, 1)
 
-train.adaBoost_train(proc_data)
+train.adaBoost_train(train_data, test_data)
