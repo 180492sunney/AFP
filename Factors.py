@@ -210,4 +210,5 @@ train_data, test_data = train.get_cleaned_date(pd.to_datetime('2014-02-28'), 12,
 test_with_prediction = train.adaBoost_train(train_data, test_data)
 
 port = Portfolio(price_df)
-port.construction(test_with_prediction, [-2,2])
+long_only_return, short_only_return, long_short_return = port.construction(test_with_prediction, [-2,2])
+print(long_only_return, short_only_return, long_short_return)
