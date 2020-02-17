@@ -71,28 +71,48 @@ class PriceData:
         price_df = self.download_data(filepath)
         price_df = price_df[['TICKER', 'date', 'PRC']]
         price_df['date'] = pd.to_datetime(price_df['date'], format='%Y%m%d')
-        price_df.drop_duplicates(keep = 'first', inplace = True)
-        price_df['ret'] = price_df.groupby(['TICKER'], as_index=False).PRC.pct_change()
-        price_df.dropna(how='any', axis=0, inplace=True)
+        price_df['ret'] = price_df.groupby(['TICKER'], as_index = False).PRC.pct_change()
+        price_df.dropna(how = 'any', axis = 0, inplace = True)
+        
+        #check for later if median is negative in a month
+        first_quantile = price_df.groupby(['date'], as_index = False)['ret'].quantile(0.2)
+        first_quantile.rename(columns = {"ret": 'first_quantile'}, inplace = True)
+        first_quantile.set_index(['date'], inplace = True)
 
-        # check for later if median is negative in a month
-        med_ret_df = price_df.groupby(['date'], as_index=False).median()
-        med_ret_df.rename(columns={"ret": 'med_ret'}, inplace=True)
-        med_ret_df.drop(['PRC'], axis=1, inplace=True)
-        price_df = pd.merge(price_df, med_ret_df, on='date', how='inner')
-        price_df['quantile'] = 0
-        price_df.loc[price_df.ret >= price_df.med_ret, 'quantile'] = 1
-        price_df.loc[price_df.ret < price_df.med_ret, 'quantile'] = -1
-        price_df.reset_index(inplace=True, drop=True)
-        price_df['3M_mom'] = price_df.groupby(['TICKER'], as_index=False).ret.rolling(3,
-                                                                                      min_periods=3).sum().reset_index(
-            0, drop=True)
-        price_df['12M_mom'] = price_df.groupby(['TICKER'], as_index=False).ret.rolling(12,
-                                                                                       min_periods=12).sum().reset_index(
-            0, drop=True)
-        price_df['date'] = pd.to_datetime(price_df['date'])
-        price_df['month'] = price_df['date'].dt.month
-        price_df['year'] = price_df['date'].dt.year
+        second_quantile = price_df.groupby(['date'], as_index = False)['ret'].quantile(0.4)
+        second_quantile.rename(columns = {"ret": 'second_quantile'}, inplace = True)
+        second_quantile.set_index(['date'], inplace = True)
+        
+        third_quantile = price_df.groupby(['date'], as_index = False)['ret'].quantile(0.6)
+        third_quantile.rename(columns = {"ret": 'third_quantile'}, inplace = True)
+        third_quantile.set_index(['date'], inplace = True)
+
+        fourth_quantile = price_df.groupby(['date'], as_index = False)['ret'].quantile(0.8)
+        fourth_quantile.rename(columns = {"ret": 'fourth_quantile'}, inplace = True)
+        fourth_quantile.set_index(['date'], inplace = True)
+
+        new_df = pd.concat([first_quantile, second_quantile, third_quantile, fourth_quantile], join='inner', axis=1)
+        new_df.reset_index(inplace = True)
+                
+        price_df = pd.merge(price_df, new_df, on = 'date', how = 'inner')
+
+        price_df['five_bucket'] = 0
+        price_df.loc[price_df.ret <= price_df.first_quantile , 'five_bucket'] = 1
+        price_df.loc[((price_df.ret > price_df.first_quantile) & (price_df.ret <= price_df.second_quantile)), 'five_bucket'] = 2
+        price_df.loc[((price_df.ret > price_df.second_quantile) & (price_df.ret <= price_df.third_quantile)), 'five_bucket'] = 3
+        price_df.loc[((price_df.ret > price_df.third_quantile) & (price_df.ret <= price_df.fourth_quantile)), 'five_bucket'] = 4
+        price_df.loc[price_df.ret > price_df.fourth_quantile, 'five_bucket'] = 5
+
+        med_ret_df = price_df.groupby(['date'], as_index = False).median()
+        med_ret_df.rename(columns = {"ret": 'med_ret'}, inplace = True)
+        price_df = pd.merge(price_df, med_ret_df[['date', 'med_ret']], on = 'date', how = 'inner')
+        price_df['two_bucket'] = 0
+        price_df.loc[price_df.ret >= price_df.med_ret, 'two_bucket'] = 1
+        price_df.loc[price_df.ret < price_df.med_ret, 'two_bucket'] = -1
+        price_df.reset_index(inplace = True, drop = True)
+        price_df['3M_mom'] = price_df.groupby(['TICKER'], as_index = False).ret.rolling(3, min_periods = 3).sum().reset_index(0,drop=True)
+        price_df['12M_mom'] = price_df.groupby(['TICKER'], as_index = False).ret.rolling(12, min_periods = 12).sum().reset_index(0,drop=True)
+        
         return price_df
 
 
