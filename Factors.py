@@ -211,18 +211,23 @@ class Portfolio:
 
 
 class Utils:
-    def get_cumulative_returns_aqr(self, aqr_fp, rf_fp):
+    def get_cumulative_returns_aqr(self, aqr_fp, rf_fp, start_dt=[], end_dt=[]):
         df = pd.read_csv(aqr_fp)
         rf = pd.read_csv(rf_fp)
         df['Date'] = pd.to_datetime(df['Date'])
+        rf['Date'] = pd.to_datetime(rf['Date'], dayfirst=True)
+        if start_dt:  # specify either both start and end or none
+            df = df[(df['Date'] >= start_dt) & (df['Date'] <= end_dt)]
+            rf = rf[(rf['Date'] >= start_dt) & (rf['Date'] <= end_dt)]
+
         df['Month'] = df['Date'].dt.month
         df['Year'] = df['Date'].dt.year
-        rf['Date'] = pd.to_datetime(rf['Date'], dayfirst=True)
+
         rf['Month'] = rf['Date'].dt.month
         rf['Year'] = rf['Date'].dt.year
         df = pd.merge(df, rf, on=['Year', 'Month'], how='left')
         df['Cum_Val'] = (
-                    1 + df['VALLS_VME_US90'] + df['Rate'] / 1200).cumprod()  # dividing risk free by 12 to get monthly
+                1 + df['VALLS_VME_US90'] + df['Rate'] / 1200).cumprod()  # dividing risk free by 12 to get monthly
         df['Cum_Mom'] = (1 + df['MOMLS_VME_US90'] + df['Rate'] / 1200).cumprod()
         # returns are in decimals, need to multiply with 100 for percent returns
         return df
@@ -250,13 +255,35 @@ class Plot_results:
     def plot_our_results(self, returns):
         returns = self.u.get_cumulative_returns_ours(returns)
         plt.figure(figsize=(20, 10))
-        plt.plot(list(returns.index), returns['Cum_L'], color='green', label='Long Only')
-        plt.plot(list(returns.index), returns['Cum_S'], color='cyan', label='Short Only')
-        plt.plot(list(returns.index), returns['Cum_LS'], color='magenta', label='Long_Short')
+        plt.plot(returns.index.values, returns['Cum_L'], color='green', label='Long Only')
+        plt.plot(returns.index.values, returns['Cum_S'], color='cyan', label='Short Only')
+        plt.plot(returns.index.values, returns['Cum_LS'], color='magenta', label='Long_Short')
         plt.legend()
         plt.title('Aqr Mom Factor Returns', fontsize=18)
         plt.show()
         print(returns)
+
+    def plot_combined(self, returns, start_dt, end_dt):
+        cum_ret_benchmark = self.u.get_cumulative_returns_aqr('AQR_Val_Mom.csv', 'Treasury_1M.csv', start_dt, end_dt)
+        cum_ret_benchmark['date'] = pd.to_datetime(cum_ret_benchmark['Date_x'])
+        cum_ret_benchmark['month'] = cum_ret_benchmark['date'].dt.month
+        cum_ret_benchmark['year'] = cum_ret_benchmark['date'].dt.year
+        returns = self.u.get_cumulative_returns_ours(returns)
+        returns_t = returns.reset_index()
+        returns_t['month'] = returns_t['index'].dt.month
+        returns_t['year'] = returns_t['index'].dt.year
+        df = pd.merge(cum_ret_benchmark, returns_t, on=['year', 'month'], how='inner')
+        set_trace()
+        plt.figure(figsize=(20, 10))
+        plt.plot(df['Date_x'], df['Cum_Val'], marker='o', label='AQR Value')
+        plt.plot(df['Date_x'], df['Cum_Mom'], marker='o', label='AQR Mom')
+        plt.plot(df['Date_x'], df['Cum_L'], marker='o', label='Long_Only')
+        plt.plot(df['Date_x'], df['Cum_S'], marker='o', label='Short_Only')
+        plt.plot(df['Date_x'], df['Cum_LS'], marker='o', label='Long_Short')
+
+        plt.legend()
+        plt.title('Cumulative Returns', fontsize=18)
+        plt.show()
 
 
 price_filepath = 'price_data.csv'
@@ -285,3 +312,5 @@ p = Plot_results()
 p.plot_benchmark_aqr()
 
 p.plot_our_results(returns_df)
+
+p.plot_combined(returns_df,pd.to_datetime('20150201',format='%Y%m%d'),pd.to_datetime('20150531',format='%Y%m%d'))
