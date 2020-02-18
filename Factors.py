@@ -226,6 +226,6 @@ port = Portfolio(price_df)
 #port = Portfolio(price_df)
 #long_only_return, short_only_return, long_short_return,_,_ = port.construction(test_with_prediction, [-2,2])
 #print(long_only_return, short_only_return, long_short_return)
-
+#hello
 returns_df = PortfolioReturns(port, train, pd.to_datetime('28-02-2014'), pd.to_datetime('28-05-2014'), 12, 1, 'five_bucket', [-2,2], Algo='AdaBoost')
 print(returns_df.head())
