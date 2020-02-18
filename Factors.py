@@ -192,20 +192,21 @@ class Portfolio:
             self.price_df['TICKER'].isin(stocks_short))]['ret'].mean()
         return ret_long_only, ret_short_only, (0.5 * ret_long_only + 0.5 * ret_short_only), stocks_long, stocks_short
 
-def PortfolioReturns(portObj, trainObj, startDate, EndDate, trainWindow, testWindow, bucket='five_bucket', quantiles=[-2,2], Algo='AdaBoost'):
-    returns_dict = {}
-    date = startDate
-    while(date<=EndDate):
-        print(date)
-        train_data, test_data = trainObj.get_cleaned_date(date, trainWindow, testWindow, bucket)
-        if Algo == 'AdaBoost':
-            test_with_prediction = trainObj.adaBoost_train(train_data, test_data)
-            long_only_return, short_only_return, long_short_return, _, _ = portObj.construction(test_with_prediction, quantiles)
-            dt = test_data['public_date'].unique()[0]
-            print(long_only_return, short_only_return, long_short_return)
-            returns_dict[dt] = [long_only_return, short_only_return, long_short_return]
-        date = date + pd.DateOffset(months=1)
-    return pd.DataFrame.from_dict(returns_dict, orient='index', columns=['Long_Only', 'Short_Only', 'Long_Short'])
+
+    def returns(self, trainObj, startDate, EndDate, trainWindow, testWindow, bucket='five_bucket', quantiles=[-2, 2], Algo='AdaBoost'):
+        returns_dict = {}
+        date = startDate
+        while (date <= EndDate):
+            print(date)
+            train_data, test_data = trainObj.get_cleaned_date(date, trainWindow, testWindow, bucket)
+            if Algo == 'AdaBoost':
+                test_with_prediction = trainObj.adaBoost_train(train_data, test_data)
+                long_only_return, short_only_return, long_short_return, _, _ = self.construction(test_with_prediction, quantiles)
+                dt = test_data['public_date'].unique()[0]
+                print(long_only_return, short_only_return, long_short_return)
+                returns_dict[dt] = [long_only_return, short_only_return, long_short_return]
+            date = date + pd.DateOffset(months=1)
+        return pd.DataFrame.from_dict(returns_dict, orient='index', columns=['Long_Only', 'Short_Only', 'Long_Short'])
 
 
 price_filepath = 'price_data.csv'
@@ -226,5 +227,5 @@ port = Portfolio(price_df)
 #port = Portfolio(price_df)
 #long_only_return, short_only_return, long_short_return,_,_ = port.construction(test_with_prediction, [-2,2])
 #print(long_only_return, short_only_return, long_short_return)
-returns_df = PortfolioReturns(port, train, pd.to_datetime('28-02-2014'), pd.to_datetime('28-05-2014'), 12, 1, 'five_bucket', [-2,2], Algo='AdaBoost')
-print(returns_df.head())
+returns_df = port.returns(train, pd.to_datetime('28-02-2014'), pd.to_datetime('28-05-2014'), 12, 1, 'five_bucket', [-2,2], Algo='AdaBoost')
+returns_df
