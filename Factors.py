@@ -148,10 +148,10 @@ class Training:
         for col in cols_update:
             df2 = pd.DataFrame()
             df2['name'] = df['name']
-            df2['avg'] = df.groupby(['category','t'])[col].transform(lambda x: x.mean())
-            df2 ['ratio'] = df.groupby(['category','t'])[col].transform(lambda x: x/x.mean())
-            df2 = df2.groupby('name', as_index=False).fillna(method='ffill')
-            df2 = df2.groupby('name', as_index=False).fillna(method='backfill')
+            df2['avg'] = df.groupby(['Industry','public_date'])[col].transform(lambda x: x.mean())
+            df2 ['ratio'] = df.groupby(['Industry','public_date'])[col].transform(lambda x: x/x.mean())
+            df2 = df2.groupby('Ticker', as_index=False).fillna(method='ffill')
+            df2 = df2.groupby('Ticker', as_index=False).fillna(method='backfill')
             df[col] = df2['avg']*df2['ratio']
         
         # regress_cols = ['Ticker', 'public_date', 'month', 'year', 'bm', 'pe_exi', 'pe_op_dil', 'evm', 'debt_at', 'de_ratio', 'liquidity', 'roe', 'roa', 'roce', 'DIVYIELD', 'dpr', 'intcov_ratio', 'debt_ebitda', 'rect_turn', 'pay_turn', 'at_turn', 'inv_turn', 'cash_ratio', 'quick_ratio', 'curr_ratio', 'cash_conversion', '1M_vol', '3M_vol', 'debt_cov', 'Industry', '3M_mom', '12M_mom', 'b_mkt', 'b_smb', 'b_hml', 'b_umd', 'quantile']
