@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 from pdb import set_trace
 from sklearn.metrics import confusion_matrix
+import matplotlib.pyplot as plt
 
 class Factors:
     def __init__(self):
@@ -209,6 +210,55 @@ class Portfolio:
         return pd.DataFrame.from_dict(returns_dict, orient='index', columns=['Long_Only', 'Short_Only', 'Long_Short'])
 
 
+class Utils:
+    def get_cumulative_returns_aqr(self, aqr_fp, rf_fp):
+        df = pd.read_csv(aqr_fp)
+        rf = pd.read_csv(rf_fp)
+        df['Date'] = pd.to_datetime(df['Date'])
+        df['Month'] = df['Date'].dt.month
+        df['Year'] = df['Date'].dt.year
+        rf['Date'] = pd.to_datetime(rf['Date'], dayfirst=True)
+        rf['Month'] = rf['Date'].dt.month
+        rf['Year'] = rf['Date'].dt.year
+        df = pd.merge(df, rf, on=['Year', 'Month'], how='left')
+        df['Cum_Val'] = (
+                    1 + df['VALLS_VME_US90'] + df['Rate'] / 1200).cumprod()  # dividing risk free by 12 to get monthly
+        df['Cum_Mom'] = (1 + df['MOMLS_VME_US90'] + df['Rate'] / 1200).cumprod()
+        # returns are in decimals, need to multiply with 100 for percent returns
+        return df
+
+    def get_cumulative_returns_ours(self, returns):
+        returns['Cum_L'] = (1 + returns['Long_Only']).cumprod()
+        returns['Cum_S'] = (1 + returns['Short_Only']).cumprod()
+        returns['Cum_LS'] = (1 + returns['Long_Short']).cumprod()
+        return returns
+
+
+class Plot_results:
+    def __init__(self):
+        self.u = Utils()
+
+    def plot_benchmark_aqr(self):
+        cum_ret = self.u.get_cumulative_returns_aqr('AQR_Val_Mom.csv', 'Treasury_1M.csv')
+        plt.figure(figsize=(20, 10))
+        plt.plot(cum_ret['Date_x'], cum_ret['Cum_Val'], color='blue', label='Value')
+        plt.plot(cum_ret['Date_x'], cum_ret['Cum_Mom'], color='red', label='Mom')
+        plt.legend()
+        plt.title('Aqr Mom Factor Returns', fontsize=18)
+        plt.show()
+
+    def plot_our_results(self, returns):
+        returns = self.u.get_cumulative_returns_ours(returns)
+        plt.figure(figsize=(20, 10))
+        plt.plot(list(returns.index), returns['Cum_L'], color='green', label='Long Only')
+        plt.plot(list(returns.index), returns['Cum_S'], color='cyan', label='Short Only')
+        plt.plot(list(returns.index), returns['Cum_LS'], color='magenta', label='Long_Short')
+        plt.legend()
+        plt.title('Aqr Mom Factor Returns', fontsize=18)
+        plt.show()
+        print(returns)
+
+
 price_filepath = 'price_data.csv'
 data = PriceData(price_filepath)
 price_df = data.calc_monthly_price(price_filepath)
@@ -227,5 +277,11 @@ port = Portfolio(price_df)
 #port = Portfolio(price_df)
 #long_only_return, short_only_return, long_short_return,_,_ = port.construction(test_with_prediction, [-2,2])
 #print(long_only_return, short_only_return, long_short_return)
+#hello
 returns_df = port.returns(train, pd.to_datetime('28-02-2014'), pd.to_datetime('28-05-2014'), 12, 1, 'five_bucket', [-2,2], Algo='AdaBoost')
 returns_df
+
+p = Plot_results()
+p.plot_benchmark_aqr()
+
+p.plot_our_results(returns_df)
