@@ -147,7 +147,7 @@ class Training:
                         'b_hml', 'b_umd', 'quantile']
         for col in cols_update:
             df2 = pd.DataFrame()
-            df2['name'] = df['name']
+            df2['Ticker'] = df['Ticker']
             df2['avg'] = df.groupby(['Industry','public_date'])[col].transform(lambda x: x.mean())
             df2 ['ratio'] = df.groupby(['Industry','public_date'])[col].transform(lambda x: x/x.mean())
             df2 = df2.groupby('Ticker', as_index=False).fillna(method='ffill')
