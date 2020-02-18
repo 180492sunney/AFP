@@ -126,8 +126,7 @@ class Training:
         self.data = data
 
     def get_cleaned_date(self, startDate, trainWindow, testWindow, bucket='two_bucket'):
-        data_processed = self.data[(self.data['public_date'] >= startDate) & (
-                    self.data['public_date'] < (startDate + pd.DateOffset(months=(trainWindow + testWindow))))]
+        data_processed = self.data[(self.data['public_date'] >= startDate) & (self.data['public_date'] < (startDate + pd.DateOffset(months=(trainWindow + testWindow))))]
         data_processed = data_processed.groupby('Ticker', as_index=False).fillna(method='backfill')
         data_processed = data_processed.groupby('Ticker', as_index=False).fillna(method='ffill')
         # regress_cols = ['Ticker', 'public_date', 'month', 'year', 'bm', 'pe_exi', 'pe_op_dil', 'evm', 'debt_at', 'de_ratio', 'liquidity', 'roe', 'roa', 'roce', 'DIVYIELD', 'dpr', 'intcov_ratio', 'debt_ebitda', 'rect_turn', 'pay_turn', 'at_turn', 'inv_turn', 'cash_ratio', 'quick_ratio', 'curr_ratio', 'cash_conversion', '1M_vol', '3M_vol', 'debt_cov', 'Industry', '3M_mom', '12M_mom', 'b_mkt', 'b_smb', 'b_hml', 'b_umd', 'quantile']
@@ -147,8 +146,7 @@ class Training:
             for ticker in empty_tickers:
                 # print(col, ticker)
                 ind = data_processed[data_processed['Ticker'] == ticker]['Industry'].head(1).values[0]
-                data_processed.loc[data_processed[data_processed['Ticker'] == ticker].index.tolist(), col] = \
-                data_processed[data_processed['Industry'] == ind][col].mean()
+                data_processed.loc[data_processed[data_processed['Ticker'] == ticker].index.tolist(), col] = data_processed[data_processed['Industry'] == ind][col].mean()
         train_data = data_processed[(data_processed['public_date'] >= startDate) & (data_processed['public_date'] < (startDate + pd.DateOffset(months=trainWindow)))]
         test_data = data_processed[(data_processed['public_date'] >= (startDate + pd.DateOffset(months=trainWindow))) & (data_processed['public_date'] < (startDate + pd.DateOffset(months=(trainWindow + testWindow))))]
         return train_data, test_data
@@ -167,15 +165,15 @@ class Training:
         train_y = train_data['quantile']
         test_X = test_data.drop(columns=['Ticker', 'public_date', 'month', 'year', 'Industry', 'quantile'])
         test_y = test_data['quantile']
-        print(train_X.shape)
-        print(test_X.shape)
+        #print(train_X.shape)
+        #print(test_X.shape)
         # print(train_y.shape)
         # print(test_y.shape)
         classifier = AdaBoostClassifier(DecisionTreeClassifier(max_depth=1), n_estimators=200)
         classifier.fit(train_X, train_y)
         predictions = classifier.predict(test_X)
         test_data['prediction'] = predictions
-        print(confusion_matrix(test_y, predictions))
+        #print(confusion_matrix(test_y, predictions))
         return test_data
 
 
@@ -188,9 +186,27 @@ class Portfolio:
         stocks_long = list(test_data[test_data['prediction'].isin([a for a in quantiles if a > 0])]['Ticker'].unique())
         stocks_short = list(test_data[test_data['prediction'].isin([a for a in quantiles if a < 0])]['Ticker'].unique())
         month, year = test_data['month'].unique()[0], test_data['year'].unique()[0]
-        ret_long_only = price_df[(self.price_df['month'] == month) & (self.price_df['year'] == year) & (self.price_df['TICKER'].isin(stocks_long))]['ret'].mean()
-        ret_short_only = -1 * price_df[(self.price_df['month'] == month) & (self.price_df['year'] == year) & (self.price_df['TICKER'].isin(stocks_short))]['ret'].mean()
-        return ret_long_only, ret_short_only, (0.5 * ret_long_only + 0.5 * ret_short_only)
+        ret_long_only = price_df[(self.price_df['month'] == month) & (self.price_df['year'] == year) & (
+            self.price_df['TICKER'].isin(stocks_long))]['ret'].mean()
+        ret_short_only = -1 * price_df[(self.price_df['month'] == month) & (self.price_df['year'] == year) & (
+            self.price_df['TICKER'].isin(stocks_short))]['ret'].mean()
+        return ret_long_only, ret_short_only, (0.5 * ret_long_only + 0.5 * ret_short_only), stocks_long, stocks_short
+
+
+    def returns(self, trainObj, startDate, EndDate, trainWindow, testWindow, bucket='five_bucket', quantiles=[-2, 2], Algo='AdaBoost'):
+        returns_dict = {}
+        date = startDate
+        while (date <= EndDate):
+            print(date)
+            train_data, test_data = trainObj.get_cleaned_date(date, trainWindow, testWindow, bucket)
+            if Algo == 'AdaBoost':
+                test_with_prediction = trainObj.adaBoost_train(train_data, test_data)
+                long_only_return, short_only_return, long_short_return, _, _ = self.construction(test_with_prediction, quantiles)
+                dt = test_data['public_date'].unique()[0]
+                print(long_only_return, short_only_return, long_short_return)
+                returns_dict[dt] = [long_only_return, short_only_return, long_short_return]
+            date = date + pd.DateOffset(months=1)
+        return pd.DataFrame.from_dict(returns_dict, orient='index', columns=['Long_Only', 'Short_Only', 'Long_Short'])
 
 
 price_filepath = 'price_data.csv'
@@ -205,10 +221,11 @@ reg_df = pd.merge(f,price_df,left_on =['Ticker','year','month'],right_on=['TICKE
 print(reg_df.shape)
 
 train = Training(reg_df)
-train_data, test_data = train.get_cleaned_date(pd.to_datetime('2014-02-28'), 12, 1, 'five_bucket')
-
-test_with_prediction = train.adaBoost_train(train_data, test_data)
-
 port = Portfolio(price_df)
-long_only_return, short_only_return, long_short_return = port.construction(test_with_prediction, [-2,2])
-print(long_only_return, short_only_return, long_short_return)
+#train_data, test_data = train.get_cleaned_date(pd.to_datetime('28-02-2014'), 12, 1, 'five_bucket')
+#test_with_prediction = train.adaBoost_train(train_data, test_data)
+#port = Portfolio(price_df)
+#long_only_return, short_only_return, long_short_return,_,_ = port.construction(test_with_prediction, [-2,2])
+#print(long_only_return, short_only_return, long_short_return)
+returns_df = port.returns(train, pd.to_datetime('28-02-2014'), pd.to_datetime('28-05-2014'), 12, 1, 'five_bucket', [-2,2], Algo='AdaBoost')
+print(returns_df.head())
