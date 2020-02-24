@@ -23,7 +23,7 @@ class Factors:
             self.betas['month'] = self.betas['DATE'].dt.month
             self.betas['year'] = self.betas['DATE'].dt.year
 
-            #fundamentals and vol
+            ##fundamentals and vol
             self.fundamentals = pd.merge(self.fundamentals,self.vol[['TICKER','year','month','1M_vol','3M_vol']],left_on=['Ticker','year','month'],right_on=['TICKER','year','month'],how='left')
             #fundamentals and betas
             self.fundamentals = pd.merge(self.fundamentals ,self.betas[['TICKER','year','month','b_mkt','b_smb','b_hml','b_umd']],left_on=['Ticker','year','month'],right_on=['TICKER','year','month'],how='left')
