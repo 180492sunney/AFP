@@ -393,7 +393,7 @@ port = Portfolio(price_df)
 #train_data, test_data = train.get_cleaned_date(pd.to_datetime('28-02-2014'), 12, 1, 'five_bucket')
 #test_with_prediction = train.adaBoost_train(train_data, test_data)
 #port = Portfolio(price_df)
-#long_only_return, short_only_return, long_short_return,_,_ = port.construction(test_with_prediction, [-2,2])
+##long_only_return, short_only_return, long_short_return,_,_ = port.construction(test_with_prediction, [-2,2])
 
 algos = ['AdaBoost', 'GradientBoost', 'RandomForest', 'LogisticRegression']
 #algos = algos[1:]
