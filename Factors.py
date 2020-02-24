@@ -23,7 +23,7 @@ class Factors:
             self.betas['month'] = self.betas['DATE'].dt.month
             self.betas['year'] = self.betas['DATE'].dt.year
 
-            ##fundamentals and vol
+            #fundamentals and vol
             self.fundamentals = pd.merge(self.fundamentals,self.vol[['TICKER','year','month','1M_vol','3M_vol']],left_on=['Ticker','year','month'],right_on=['TICKER','year','month'],how='left')
             #fundamentals and betas
             self.fundamentals = pd.merge(self.fundamentals ,self.betas[['TICKER','year','month','b_mkt','b_smb','b_hml','b_umd']],left_on=['Ticker','year','month'],right_on=['TICKER','year','month'],how='left')
@@ -73,7 +73,6 @@ class PriceData:
         price_df['date'] = pd.to_datetime(price_df['date'], format='%Y%m%d')
         price_df['ret'] = price_df.groupby(['TICKER'], as_index=False).PRC.pct_change().shift(periods = -1)
         price_df.dropna(how='any', axis=0, inplace=True)
-        print(price_df.head())
 
         # check for later if median is negative in a month
         first_quantile = price_df.groupby(['date'], as_index=True)['ret'].quantile(0.2)
@@ -117,6 +116,11 @@ class PriceData:
         price_df['date'] = pd.to_datetime(price_df['date'])
         price_df['month'] = price_df['date'].dt.month
         price_df['year'] = price_df['date'].dt.year
+        
+        price_df['lagged_returns1'] = price_df.groupby(['TICKER'], as_index=False).PRC.pct_change().shift(periods = 1)
+        price_df['lagged_returns2'] = price_df.groupby(['TICKER'], as_index=False).PRC.pct_change().shift(periods = 2)
+        print(price_df.head())
+
 
         return price_df
 
@@ -158,7 +162,7 @@ class Training:
                         'de_ratio', 'liquidity', 'roe', 'roa', 'roce', 'dpr', 'intcov_ratio', 'debt_ebitda',
                         'rect_turn', 'pay_turn', 'at_turn', 'inv_turn', 'cash_ratio', 'quick_ratio', 'curr_ratio',
                         'cash_conversion', '1M_vol', '3M_vol', 'Industry', '3M_mom', '12M_mom', 'b_mkt', 'b_smb',
-                        'b_hml', 'b_umd', 'quantile']
+                        'b_hml', 'b_umd', 'quantile', 'lagged_returns1', 'lagged_returns2']
         data_processed = data_processed[regress_cols]
         null_aggr = data_processed.isnull().sum()
         null_aggr_list = null_aggr[null_aggr != 0].index.tolist()
@@ -349,7 +353,18 @@ class Utils:
         returns['Cum_L'] = (1 + returns['Long_Only']).cumprod()
         returns['Cum_S'] = (1 + returns['Short_Only']).cumprod()
         returns['Cum_LS'] = (1 + returns['Long_Short']).cumprod()
+        
         return returns
+    
+    def benchmark_portfolio(self, me_ind=1, ia_ind=1, roe_ind=1, year = 1967, month = 1):
+        bench_df = pd.read_csv('/Users/vikrantdhall/Documents/MFE/AFP/AFP/benportf_me_ia_roe_monthly_2019.csv')
+        bench_df = bench_df[(bench_df.year >= year) | (bench_df.month >= month)]
+        bench_df = bench_df[(bench_df.rank_ME == me_ind) & (bench_df.rank_IA == ia_ind) & (bench_df.rank_ROE == roe_ind)]
+        bench_df['cum_ret'] = (1+bench_df.ret_vw/100).cumprod()
+        bench_df['day'] = 1
+        bench_df['date'] = pd.to_datetime(bench_df[['year', 'month', 'day']])
+        
+        return bench_df
 
 
 class Plot_results:
@@ -375,7 +390,11 @@ class Plot_results:
         plt.title('Aqr Mom Factor Returns', fontsize=18)
         plt.show()
         print(returns)
-
+        
+    def plot_bench_results(self):
+        result = self.u.benchmark_portfolio(me_ind=1, ia_ind=1, roe_ind=1, year = 1967, month = 1)
+        plt.figure(figsize = (10,10))
+        plt.plot(result.date, result.cum_ret, color = 'green', label = 'benchmark_portfolio')
 
 price_filepath = 'price_data.csv'
 data = PriceData(price_filepath)
@@ -393,7 +412,7 @@ port = Portfolio(price_df)
 #train_data, test_data = train.get_cleaned_date(pd.to_datetime('28-02-2014'), 12, 1, 'five_bucket')
 #test_with_prediction = train.adaBoost_train(train_data, test_data)
 #port = Portfolio(price_df)
-##long_only_return, short_only_return, long_short_return,_,_ = port.construction(test_with_prediction, [-2,2])
+#long_only_return, short_only_return, long_short_return,_,_ = port.construction(test_with_prediction, [-2,2])
 
 algos = ['AdaBoost', 'GradientBoost', 'RandomForest', 'LogisticRegression']
 #algos = algos[1:]
@@ -403,7 +422,11 @@ for algo in algos:
     returns_df = port.returns(train, pd.to_datetime('28-02-2014'), pd.to_datetime('28-05-2014'), 12, 1, 'five_bucket', [-2,2], Algo=algo)
     print(returns_df)
 
+#p.plot_our_results(returns_df)
+
 p = Plot_results()
 p.plot_benchmark_aqr()
+p.plot_bench_results()
 
-#p.plot_our_results(returns_df)
+
+
