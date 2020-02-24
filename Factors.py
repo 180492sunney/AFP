@@ -11,7 +11,6 @@ class Factors:
         self.vol = pd.read_csv('vol_data.csv')
         self.betas = pd.read_csv('betas.csv')
         self.industry_class = pd.read_csv('Industry.csv')
-
     def combine_data(self,load=1):
         if load==0:
             self.fundamentals['public_date'] = pd.to_datetime(self.fundamentals['public_date'])
@@ -177,6 +176,78 @@ class Training:
         #print(confusion_matrix(test_y, predictions))
         return test_data
 
+    def gradientBoost_train(self, train_data, test_data):
+        from sklearn.ensemble import GradientBoostingClassifier
+        from sklearn.tree import DecisionTreeClassifier
+        from sklearn.model_selection import train_test_split
+
+        # train_data = train_data[train_data['debt_cov'] != float("inf")]
+        # test_data = test_data[test_data['debt_cov'] != float("inf")]
+        # X = train_data.drop(columns=['Ticker', 'public_date', 'Industry', 'quantile'])
+        # y = train_data['quantile']
+        # train_X, test_X, train_y, test_y = train_test_split(X, y, random_state=1)
+        train_X = train_data.drop(columns=['Ticker', 'public_date', 'month', 'year', 'Industry', 'quantile'])
+        train_y = train_data['quantile']
+        test_X = test_data.drop(columns=['Ticker', 'public_date', 'month', 'year', 'Industry', 'quantile'])
+        test_y = test_data['quantile']
+        #print(train_X.shape)
+        #print(test_X.shape)
+        # print(train_y.shape)
+        # print(test_y.shape)
+        classifier = GradientBoostingClassifier(max_depth=1, n_estimators=200)
+        classifier.fit(train_X, train_y)
+        predictions = classifier.predict(test_X)
+        test_data['prediction'] = predictions
+        #print(confusion_matrix(test_y, predictions))
+        return test_data
+
+    def randomforest_train(self, train_data, test_data):
+        from sklearn.ensemble import RandomForestClassifier
+        from sklearn.model_selection import train_test_split
+
+        # train_data = train_data[train_data['debt_cov'] != float("inf")]
+        # test_data = test_data[test_data['debt_cov'] != float("inf")]
+        # X = train_data.drop(columns=['Ticker', 'public_date', 'Industry', 'quantile'])
+        # y = train_data['quantile']
+        # train_X, test_X, train_y, test_y = train_test_split(X, y, random_state=1)
+        train_X = train_data.drop(columns=['Ticker', 'public_date', 'month', 'year', 'Industry', 'quantile'])
+        train_y = train_data['quantile']
+        test_X = test_data.drop(columns=['Ticker', 'public_date', 'month', 'year', 'Industry', 'quantile'])
+        test_y = test_data['quantile']
+        #print(train_X.shape)
+        #print(test_X.shape)
+        # print(train_y.shape)
+        # print(test_y.shape)
+        classifier = RandomForestClassifier(criterion='gini', max_depth=1, n_estimators=200)
+        classifier.fit(train_X, train_y)
+        predictions = classifier.predict(test_X)
+        test_data['prediction'] = predictions
+        #print(confusion_matrix(test_y, predictions))
+        return test_data
+
+    def logisticregression_train(self, train_data, test_data):
+        from sklearn.linear_model import LogisticRegression
+        from sklearn.model_selection import train_test_split
+
+        # train_data = train_data[train_data['debt_cov'] != float("inf")]
+        # test_data = test_data[test_data['debt_cov'] != float("inf")]
+        # X = train_data.drop(columns=['Ticker', 'public_date', 'Industry', 'quantile'])
+        # y = train_data['quantile']
+        # train_X, test_X, train_y, test_y = train_test_split(X, y, random_state=1)
+        train_X = train_data.drop(columns=['Ticker', 'public_date', 'month', 'year', 'Industry', 'quantile'])
+        train_y = train_data['quantile']
+        test_X = test_data.drop(columns=['Ticker', 'public_date', 'month', 'year', 'Industry', 'quantile'])
+        test_y = test_data['quantile']
+        #print(train_X.shape)
+        #print(test_X.shape)
+        # print(train_y.shape)
+        # print(test_y.shape)
+        classifier = LogisticRegression()
+        classifier.fit(train_X, train_y)
+        predictions = classifier.predict(test_X)
+        test_data['prediction'] = predictions
+        #print(confusion_matrix(test_y, predictions))
+        return test_data
 
 class Portfolio:
 
@@ -207,6 +278,31 @@ class Portfolio:
                 print(long_only_return, short_only_return, long_short_return)
                 returns_dict[dt] = [long_only_return, short_only_return, long_short_return]
             date = date + pd.DateOffset(months=1)
+
+            if Algo == 'GradientBoost':
+                test_with_prediction = trainObj.gradientBoost_train(train_data, test_data)
+                long_only_return, short_only_return, long_short_return, _, _ = self.construction(test_with_prediction, quantiles)
+                dt = test_data['public_date'].unique()[0]
+                print(long_only_return, short_only_return, long_short_return)
+                returns_dict[dt] = [long_only_return, short_only_return, long_short_return]
+            date = date + pd.DateOffset(months=1)
+
+            if Algo == 'RandomForest':
+                test_with_prediction = trainObj.randomforest_train(train_data, test_data)
+                long_only_return, short_only_return, long_short_return, _, _ = self.construction(test_with_prediction, quantiles)
+                dt = test_data['public_date'].unique()[0]
+                print(long_only_return, short_only_return, long_short_return)
+                returns_dict[dt] = [long_only_return, short_only_return, long_short_return]
+            date = date + pd.DateOffset(months=1)
+
+            if Algo == 'LogisticRegression':
+                test_with_prediction = trainObj.logisticregression_train(train_data, test_data)
+                long_only_return, short_only_return, long_short_return, _, _ = self.construction(test_with_prediction, quantiles)
+                dt = test_data['public_date'].unique()[0]
+                print(long_only_return, short_only_return, long_short_return)
+                returns_dict[dt] = [long_only_return, short_only_return, long_short_return]
+            date = date + pd.DateOffset(months=1)
+
         return pd.DataFrame.from_dict(returns_dict, orient='index', columns=['Long_Only', 'Short_Only', 'Long_Short'])
 
 
@@ -278,10 +374,15 @@ port = Portfolio(price_df)
 #long_only_return, short_only_return, long_short_return,_,_ = port.construction(test_with_prediction, [-2,2])
 #print(long_only_return, short_only_return, long_short_return)
 #hello
-returns_df = port.returns(train, pd.to_datetime('28-02-2014'), pd.to_datetime('28-05-2014'), 12, 1, 'five_bucket', [-2,2], Algo='AdaBoost')
-returns_df
+algos = ['AdaBoost', 'GradientBoost', 'RandomForest', 'LogisticRegression']
+#algos = algos[1:]
+for algo in algos:
 
-p = Plot_results()
-p.plot_benchmark_aqr()
+    #set_trace()
+    returns_df = port.returns(train, pd.to_datetime('28-02-2014'), pd.to_datetime('28-05-2014'), 12, 1, 'five_bucket', [-2,2], Algo=algo)
+    print(returns_df)
 
-p.plot_our_results(returns_df)
+    #p = Plot_results()
+    #p.plot_benchmark_aqr()
+
+    #p.plot_our_results(returns_df)
