@@ -124,11 +124,32 @@ class Training:
 
     def __init__(self, data):
         self.data = data
-
-    def get_cleaned_date(self, startDate, trainWindow, testWindow, bucket='two_bucket'):
+        
+    
+    def get_cleaned_date(self, startDate, trainWindow, testWindow, bucket='two_bucket', interpolation = 'linear'):
         data_processed = self.data[(self.data['public_date'] >= startDate) & (self.data['public_date'] < (startDate + pd.DateOffset(months=(trainWindow + testWindow))))]
-        data_processed = data_processed.groupby('Ticker', as_index=False).fillna(method='backfill')
-        data_processed = data_processed.groupby('Ticker', as_index=False).fillna(method='ffill')
+        
+        #linear interpolation
+        if interpolation == 'linear':
+            data_processed = data_processed.groupby('Ticker', as_index=False).apply(lambda group: group.interpolate(method ='linear'))
+        
+        #updating NA by moving in line with industry average
+        if interpolation == 'trend': 
+            cols_update = ['bm', 'pe_exi', 'pe_op_dil', 'evm', 'debt_at',
+                            'de_ratio', 'liquidity', 'roe', 'roa', 'roce', 'dpr', 'intcov_ratio', 'debt_ebitda',
+                            'rect_turn', 'pay_turn', 'at_turn', 'inv_turn', 'cash_ratio', 'quick_ratio', 'curr_ratio',
+                            'cash_conversion', '1M_vol', '3M_vol', '3M_mom', '12M_mom', 'b_mkt', 'b_smb',
+                            'b_hml', 'b_umd']
+            for col in cols_update:
+                print (col)
+                df2 = pd.DataFrame()
+                df2['Ticker'] = data_processed['Ticker']
+                df2['avg'] = data_processed.groupby(['Industry','public_date'])[col].transform(lambda x: x.mean())
+                df2 ['ratio'] = data_processed.groupby(['Industry','public_date'])[col].transform(lambda x: x/x.mean())
+                df2 = df2.groupby('Ticker', as_index=False).fillna(method='ffill')
+                df2 = df2.groupby('Ticker', as_index=False).fillna(method='backfill')
+                data_processed[col] = df2['avg']*df2['ratio']
+        
         # regress_cols = ['Ticker', 'public_date', 'month', 'year', 'bm', 'pe_exi', 'pe_op_dil', 'evm', 'debt_at', 'de_ratio', 'liquidity', 'roe', 'roa', 'roce', 'DIVYIELD', 'dpr', 'intcov_ratio', 'debt_ebitda', 'rect_turn', 'pay_turn', 'at_turn', 'inv_turn', 'cash_ratio', 'quick_ratio', 'curr_ratio', 'cash_conversion', '1M_vol', '3M_vol', 'debt_cov', 'Industry', '3M_mom', '12M_mom', 'b_mkt', 'b_smb', 'b_hml', 'b_umd', 'quantile']
         # regress_cols = ['Ticker', 'public_date', 'month', 'year', 'bm', 'pe_exi', 'pe_op_dil', 'evm', 'debt_at', 'de_ratio', 'liquidity', 'roe', 'roa', 'roce', 'dpr', 'intcov_ratio', 'debt_ebitda', 'rect_turn', 'pay_turn', 'at_turn', 'inv_turn', 'cash_ratio', 'quick_ratio', 'curr_ratio', 'cash_conversion', '1M_vol', '3M_vol', 'debt_cov', 'Industry', '3M_mom', '12M_mom', 'b_mkt', 'b_smb', 'b_hml', 'b_umd', 'quantile']
         data_processed.rename(columns={bucket: 'quantile'}, inplace=True)
@@ -385,4 +406,4 @@ for algo in algos:
     #p = Plot_results()
     #p.plot_benchmark_aqr()
 
-    #p.plot_our_results(returns_df)
+p.plot_our_results(returns_df)
