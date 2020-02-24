@@ -71,8 +71,9 @@ class PriceData:
         price_df = self.download_data(filepath)
         price_df = price_df[['TICKER', 'date', 'PRC']]
         price_df['date'] = pd.to_datetime(price_df['date'], format='%Y%m%d')
-        price_df['ret'] = price_df.groupby(['TICKER'], as_index=False).PRC.pct_change()
+        price_df['ret'] = price_df.groupby(['TICKER'], as_index=False).PRC.pct_change().shift(periods = -1)
         price_df.dropna(how='any', axis=0, inplace=True)
+        print(price_df.head())
 
         # check for later if median is negative in a month
         first_quantile = price_df.groupby(['date'], as_index=True)['ret'].quantile(0.2)
@@ -194,7 +195,7 @@ class Training:
         classifier.fit(train_X, train_y)
         predictions = classifier.predict(test_X)
         test_data['prediction'] = predictions
-        #print(confusion_matrix(test_y, predictions))
+        print(confusion_matrix(test_y, predictions))
         return test_data
 
     def gradientBoost_train(self, train_data, test_data):
@@ -402,7 +403,7 @@ for algo in algos:
     returns_df = port.returns(train, pd.to_datetime('28-02-2014'), pd.to_datetime('28-05-2014'), 12, 1, 'five_bucket', [-2,2], Algo=algo)
     print(returns_df)
 
-    #p = Plot_results()
-    #p.plot_benchmark_aqr()
+p = Plot_results()
+p.plot_benchmark_aqr()
 
-p.plot_our_results(returns_df)
+#p.plot_our_results(returns_df)
