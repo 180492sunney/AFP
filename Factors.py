@@ -144,10 +144,8 @@ class Training:
         self.data = data
 
     def get_cleaned_date(self, startDate, trainWindow, testWindow, bucket='two_bucket', interpolation='linear'):
-        path_train = "./TrainData/trainData_" + str(startDate.date()) + "_" + str(trainWindow) + "_" + str(
-            testWindow) + "_" + interpolation + ".csv"
-        path_test = "./TestData/testData_" + str(startDate.date()) + "_" + str(trainWindow) + "_" + str(
-            testWindow) + "_" + interpolation + ".csv"
+        path_train = "./TrainData/trainData_" + str(startDate.date()) + "_" + str(trainWindow) + "_" + str(testWindow) + "_" + interpolation + ".csv"
+        path_test = "./TestData/testData_" + str(startDate.date()) + "_" + str(trainWindow) + "_" + str(testWindow) + "_" + interpolation + ".csv"
 
         if not os.path.exists("./TrainData"):
             os.mkdir("./TrainData")
@@ -180,10 +178,8 @@ class Training:
                     # print(col)
                     df2 = pd.DataFrame()
                     df2['Ticker'] = data_processed['Ticker']
-                    df2['avg'] = data_processed.groupby(['Industry', 'public_date'])[col].transform(
-                        lambda x: x.median())
-                    df2['ratio'] = data_processed.groupby(['Industry', 'public_date'])[col].transform(
-                        lambda x: x / x.median())
+                    df2['avg'] = data_processed.groupby(['Industry', 'public_date'])[col].transform(lambda x: x.median())
+                    df2['ratio'] = data_processed.groupby(['Industry', 'public_date'])[col].transform(lambda x: x / x.median())
                     df2 = df2.groupby('Ticker', as_index=False).fillna(method='ffill')
                     df2 = df2.groupby('Ticker', as_index=False).fillna(method='backfill')
                     data_processed[col] = df2['avg'] * df2['ratio']
