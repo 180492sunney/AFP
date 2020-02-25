@@ -3,7 +3,7 @@ import numpy as np
 from pdb import set_trace
 from sklearn.metrics import confusion_matrix
 import matplotlib.pyplot as plt
-
+import os
 
 class Factors:
     def __init__(self):
@@ -125,12 +125,8 @@ class PriceData:
         price_df.loc[price_df.ret >= price_df.med_ret, 'two_bucket'] = 1
         price_df.loc[price_df.ret < price_df.med_ret, 'two_bucket'] = -1
         price_df.reset_index(inplace=True, drop=True)
-        price_df['3M_mom'] = price_df.groupby(['TICKER'], as_index=False).ret.rolling(3,
-                                                                                      min_periods=3).sum().reset_index(
-            0, drop=True)
-        price_df['12M_mom'] = price_df.groupby(['TICKER'], as_index=False).ret.rolling(12,
-                                                                                       min_periods=12).sum().reset_index(
-            0, drop=True)
+        price_df['3M_mom'] = price_df.groupby(['TICKER'], as_index=False).ret.rolling(3, min_periods=3).sum().reset_index(0, drop=True)
+        price_df['12M_mom'] = price_df.groupby(['TICKER'], as_index=False).ret.rolling(12, min_periods=12).sum().reset_index(0, drop=True)
         price_df['date'] = pd.to_datetime(price_df['date'])
         price_df['month'] = price_df['date'].dt.month
         price_df['year'] = price_df['date'].dt.year
@@ -148,58 +144,99 @@ class Training:
         self.data = data
 
     def get_cleaned_date(self, startDate, trainWindow, testWindow, bucket='two_bucket', interpolation='linear'):
-        data_processed = self.data[(self.data['public_date'] >= startDate) & (
-                self.data['public_date'] < (startDate + pd.DateOffset(months=(trainWindow + testWindow))))]
+        path_train = "./TrainData/trainData_" + str(startDate.date()) + "_" + str(trainWindow) + "_" + str(
+            testWindow) + "_" + interpolation + ".csv"
+        path_test = "./TestData/testData_" + str(startDate.date()) + "_" + str(trainWindow) + "_" + str(
+            testWindow) + "_" + interpolation + ".csv"
 
-        # linear interpolation
-        if interpolation == 'linear':
-            data_processed = data_processed.groupby('Ticker', as_index=False).apply(
-                lambda group: group.interpolate(method='linear'))
+        if not os.path.exists("./TrainData"):
+            os.mkdir("./TrainData")
 
-        # updating NA by moving in line with industry average
-        if interpolation == 'trend':
-            cols_update = ['bm', 'pe_exi', 'pe_op_dil', 'evm', 'debt_at',
-                           'de_ratio', 'liquidity', 'roe', 'roa', 'roce', 'DIVYIELD', 'dpr', 'intcov_ratio',
-                           'debt_ebitda',
-                           'rect_turn', 'pay_turn', 'at_turn', 'inv_turn', 'cash_ratio', 'quick_ratio', 'curr_ratio',
-                           'cash_conversion', '1M_vol', '3M_vol', '3M_mom', '12M_mom', 'b_mkt', 'b_smb',
-                           'b_hml', 'b_umd']
-            for col in cols_update:
-                print(col)
-                df2 = pd.DataFrame()
-                df2['Ticker'] = data_processed['Ticker']
-                df2['avg'] = data_processed.groupby(['Industry', 'public_date'])[col].transform(lambda x: x.median())
-                df2['ratio'] = data_processed.groupby(['Industry', 'public_date'])[col].transform(
-                    lambda x: x / x.median())
-                df2 = df2.groupby('Ticker', as_index=False).fillna(method='ffill')
-                df2 = df2.groupby('Ticker', as_index=False).fillna(method='backfill')
-                data_processed[col] = df2['avg'] * df2['ratio']
+        if not os.path.exists("./TestData"):
+            os.mkdir("./TestData")
 
-        # regress_cols = ['Ticker', 'public_date', 'month', 'year', 'bm', 'pe_exi', 'pe_op_dil', 'evm', 'debt_at', 'de_ratio', 'liquidity', 'roe', 'roa', 'roce', 'DIVYIELD', 'dpr', 'intcov_ratio', 'debt_ebitda', 'rect_turn', 'pay_turn', 'at_turn', 'inv_turn', 'cash_ratio', 'quick_ratio', 'curr_ratio', 'cash_conversion', '1M_vol', '3M_vol', 'debt_cov', 'Industry', '3M_mom', '12M_mom', 'b_mkt', 'b_smb', 'b_hml', 'b_umd', 'quantile']
-        # regress_cols = ['Ticker', 'public_date', 'month', 'year', 'bm', 'pe_exi', 'pe_op_dil', 'evm', 'debt_at', 'de_ratio', 'liquidity', 'roe', 'roa', 'roce', 'dpr', 'intcov_ratio', 'debt_ebitda', 'rect_turn', 'pay_turn', 'at_turn', 'inv_turn', 'cash_ratio', 'quick_ratio', 'curr_ratio', 'cash_conversion', '1M_vol', '3M_vol', 'debt_cov', 'Industry', '3M_mom', '12M_mom', 'b_mkt', 'b_smb', 'b_hml', 'b_umd', 'quantile']
-        data_processed.rename(columns={bucket: 'quantile'}, inplace=True)
-        regress_cols = ['Ticker', 'public_date', 'month', 'year', 'bm', 'pe_exi', 'pe_op_dil', 'evm', 'debt_at',
-                        'de_ratio', 'liquidity', 'roe', 'roa', 'roce', 'DIVYIELD', 'dpr', 'intcov_ratio', 'debt_ebitda',
-                        'rect_turn', 'pay_turn', 'at_turn', 'inv_turn', 'cash_ratio', 'quick_ratio', 'curr_ratio',
-                        'cash_conversion', '1M_vol', '3M_vol', 'Industry', '3M_mom', '12M_mom', 'b_mkt', 'b_smb',
-                        'b_hml', 'b_umd', 'quantile']
-        data_processed = data_processed[regress_cols]
-        null_aggr = data_processed.isnull().sum()
-        null_aggr_list = null_aggr[null_aggr != 0].index.tolist()
-        for col in null_aggr_list:
-            a = data_processed.groupby('Ticker').apply(lambda x: x[col].isnull().sum())
-            empty_tickers = a[a != 0].index.tolist()
-            for ticker in empty_tickers:
-                # print(col, ticker)
-                ind = data_processed[data_processed['Ticker'] == ticker]['Industry'].head(1).values[0]
-                data_processed.loc[data_processed[data_processed['Ticker'] == ticker].index.tolist(), col] = \
-                    data_processed[data_processed['Industry'] == ind][col].median()
-        train_data = data_processed[(data_processed['public_date'] >= startDate) & (
-                data_processed['public_date'] < (startDate + pd.DateOffset(months=trainWindow)))]
-        test_data = data_processed[
-            (data_processed['public_date'] >= (startDate + pd.DateOffset(months=trainWindow))) & (
-                    data_processed['public_date'] < (startDate + pd.DateOffset(months=(trainWindow + testWindow))))]
-        return train_data, test_data
+        if os.path.exists(path_train) & os.path.exists(path_test):
+            train_data = pd.read_csv(path_train).drop('Unnamed: 0', axis=1)
+            test_data = pd.read_csv(path_test).drop('Unnamed: 0', axis=1)
+            return train_data, test_data
+        else:
+
+            data_processed = self.data[(self.data['public_date'] >= startDate) & (self.data['public_date'] < (startDate + pd.DateOffset(months=(trainWindow + testWindow))))]
+
+            # linear interpolation
+            if interpolation == 'linear':
+                data_processed = data_processed.groupby('Ticker', as_index=False).apply(lambda group: group.interpolate(method='linear'))
+
+            # updating NA by moving in line with industry average
+            if interpolation == 'trend':
+                cols_update = ['bm', 'pe_exi', 'pe_op_dil', 'evm', 'debt_at',
+                               'de_ratio', 'liquidity', 'roe', 'roa', 'roce', 'DIVYIELD', 'dpr', 'intcov_ratio',
+                               'debt_ebitda',
+                               'rect_turn', 'pay_turn', 'at_turn', 'inv_turn', 'cash_ratio', 'quick_ratio',
+                               'curr_ratio',
+                               'cash_conversion', '1M_vol', '3M_vol', '3M_mom', '12M_mom', 'b_mkt', 'b_smb',
+                               'b_hml', 'b_umd']
+                for col in cols_update:
+                    # print(col)
+                    df2 = pd.DataFrame()
+                    df2['Ticker'] = data_processed['Ticker']
+                    df2['avg'] = data_processed.groupby(['Industry', 'public_date'])[col].transform(
+                        lambda x: x.median())
+                    df2['ratio'] = data_processed.groupby(['Industry', 'public_date'])[col].transform(
+                        lambda x: x / x.median())
+                    df2 = df2.groupby('Ticker', as_index=False).fillna(method='ffill')
+                    df2 = df2.groupby('Ticker', as_index=False).fillna(method='backfill')
+                    data_processed[col] = df2['avg'] * df2['ratio']
+
+            # regress_cols = ['Ticker', 'public_date', 'month', 'year', 'bm', 'pe_exi', 'pe_op_dil', 'evm', 'debt_at', 'de_ratio', 'liquidity', 'roe', 'roa', 'roce', 'DIVYIELD', 'dpr', 'intcov_ratio', 'debt_ebitda', 'rect_turn', 'pay_turn', 'at_turn', 'inv_turn', 'cash_ratio', 'quick_ratio', 'curr_ratio', 'cash_conversion', '1M_vol', '3M_vol', 'debt_cov', 'Industry', '3M_mom', '12M_mom', 'b_mkt', 'b_smb', 'b_hml', 'b_umd', 'quantile']
+            # regress_cols = ['Ticker', 'public_date', 'month', 'year', 'bm', 'pe_exi', 'pe_op_dil', 'evm', 'debt_at', 'de_ratio', 'liquidity', 'roe', 'roa', 'roce', 'dpr', 'intcov_ratio', 'debt_ebitda', 'rect_turn', 'pay_turn', 'at_turn', 'inv_turn', 'cash_ratio', 'quick_ratio', 'curr_ratio', 'cash_conversion', '1M_vol', '3M_vol', 'debt_cov', 'Industry', '3M_mom', '12M_mom', 'b_mkt', 'b_smb', 'b_hml', 'b_umd', 'quantile']
+            data_processed.rename(columns={bucket: 'quantile'}, inplace=True)
+            regress_cols = ['Ticker', 'public_date', 'month', 'year', 'bm', 'pe_exi', 'pe_op_dil', 'evm', 'debt_at',
+                            'de_ratio', 'liquidity', 'roe', 'roa', 'roce', 'DIVYIELD', 'dpr', 'intcov_ratio',
+                            'debt_ebitda',
+                            'rect_turn', 'pay_turn', 'at_turn', 'inv_turn', 'cash_ratio', 'quick_ratio', 'curr_ratio',
+                            'cash_conversion', '1M_vol', '3M_vol', 'Industry', '3M_mom', '12M_mom', 'b_mkt', 'b_smb',
+                            'b_hml', 'b_umd', 'quantile']
+            data_processed = data_processed[regress_cols]
+            data_processed.replace([np.inf, -np.inf], np.nan, inplace=True)
+            null_aggr = data_processed.isnull().sum()
+            null_aggr_list = null_aggr[null_aggr != 0].index.tolist()
+            for col in null_aggr_list:
+                a = data_processed.groupby('Ticker').apply(lambda x: x[col].isnull().sum())
+                empty_tickers = a[a != 0].index.tolist()
+                for ticker in empty_tickers:
+                    # print(col, ticker)
+                    ind = data_processed[data_processed['Ticker'] == ticker]['Industry'].head(1).values[0]
+                    data_processed.loc[data_processed[data_processed['Ticker'] == ticker].index.tolist(), col] = data_processed[data_processed['Industry'] == ind][col].median()
+            train_data = data_processed[(data_processed['public_date'] >= startDate) & (data_processed['public_date'] < (startDate + pd.DateOffset(months=trainWindow)))]
+            test_data = data_processed[(data_processed['public_date'] >= (startDate + pd.DateOffset(months=trainWindow))) & (data_processed['public_date'] < (startDate + pd.DateOffset(months=(trainWindow + testWindow))))]
+
+            train_data.drop_duplicates(inplace=True)
+            test_data.drop_duplicates(inplace=True)
+            len_before = train_data.shape[0]
+
+            train_data.replace([np.inf, -np.inf], np.nan, inplace=True)
+            test_data.replace([np.inf, -np.inf], np.nan, inplace=True)
+            train_data.dropna(inplace=True)
+            test_data.dropna(inplace=True)
+            len_after = train_data.shape[0]
+
+            if float((len_before - len_after) / len_before) > 0.25:
+                print('Data dropped significantly. Intial data=' + str(len_before) + ' and data fater=' + str(len_after))
+
+            train_data.to_csv(path_train)
+            test_data.to_csv(path_test)
+
+            return train_data, test_data
+
+    def generateTrainTestFiles(startDate, endDate, trainWindow, testWindow, bucket, interpolation):
+        date = startDate
+        while (date <= endDate):
+            print(date)
+            train_data, test_data = train.get_cleaned_date(date, trainWindow, testWindow, bucket, interpolation)
+            # train_data.to_csv("./TrainData/trainData_"+str(date.date())+"_"+str(trainWindow)+"_"+str(testWindow)+"_"+interpolation+".csv")
+            # test_data.to_csv("./TestData/testData_"+str(date.date())+"_"+str(trainWindow)+"_"+str(testWindow)+"_"+interpolation+".csv")
+            date = date + pd.DateOffset(months=1)
 
     def adaBoost_train(self, train_data, test_data):
         from sklearn.ensemble import AdaBoostClassifier
@@ -323,8 +360,7 @@ class Portfolio:
             self.price_df['TICKER'].isin(stocks_short))]['ret'].mean()
         return ret_long_only, ret_short_only, (0.5 * ret_long_only + 0.5 * ret_short_only), stocks_long, stocks_short
 
-    def returns(self, trainObj, startDate, EndDate, trainWindow, testWindow, bucket='five_bucket', quantiles=[-2, 2],
-                Algo='AdaBoost', interpolation='linear'):
+    def returns(self, trainObj, startDate, EndDate, trainWindow, testWindow, bucket='five_bucket', quantiles=[-2, 2], Algo='AdaBoost', interpolation='linear'):
         returns_dict = {}
         feature_imp_dict = {}
         op_up_acc_dict = {}
@@ -493,8 +529,8 @@ print(reg_df.shape)
 
 train = Training(reg_df)
 port = Portfolio(price_df)
-startDate = pd.to_datetime('28-02-2014')
-endDate = pd.to_datetime('28-03-2014')
+startDate = pd.to_datetime('20150201',format='%Y%m%d')
+endDate = pd.to_datetime('20150531',format='%Y%m%d')
 train_window = 12 #in months
 test_windon = 1 #in months
 interpolation = 'linear'
