@@ -88,20 +88,6 @@ class PriceData:
         price_df = price_df[['TICKER', 'date', 'PRC']]
         ticker_list = price_df['TICKER'].unique()
         price_df['date'] = pd.to_datetime(price_df['date'], format='%Y-%m-%d')
-
-        mktcap_df = pd.read_csv('price_data.csv')
-        mktcap_df['ADJSHRS'] = (mktcap_df['SHROUT'] * mktcap_df['CFACSHR'])
-        mktcap_df['date'] = pd.to_datetime(mktcap_df['date'], format='%Y%m%d')
-        for tick in ticker_list:
-            mktcap_df.loc[mktcap_df['TICKER'] == str(tick), 'ADJSHRS'] = mktcap_df[
-                mktcap_df['TICKER'] == str(tick)].ADJSHRS.ffill(axis=0)
-            mktcap_df.loc[mktcap_df['TICKER'] == str(tick), 'ADJSHRS'] = mktcap_df[
-                mktcap_df['TICKER'] == str(tick)].ADJSHRS.bfill(axis=0)
-        price_df = pd.merge(price_df, mktcap_df[['date', 'TICKER', 'ADJSHRS']], how='left', on=['date', 'TICKER'])
-        price_df = price_df[['TICKER', 'date', 'PRC', 'ADJSHRS']]
-        price_df['ADJSHRS'] = price_df.groupby('TICKER')['ADJSHRS'].transform(lambda v: v.ffill())
-        price_df['ADJSHRS'] = price_df.groupby('TICKER')['ADJSHRS'].transform(lambda v: v.bfill())
-
         price_df['ret'] = price_df.groupby(['TICKER'], as_index=False).PRC.pct_change()
         for tick in ticker_list:
             price_df.loc[price_df['TICKER'] == str(tick), 'ret'] = price_df[price_df['TICKER'] == str(tick)].ret.shift(
@@ -188,7 +174,7 @@ class Training:
         else:
 
             data_processed = self.data[(self.data['public_date'] >= startDate) & (
-                        self.data['public_date'] < (startDate + pd.DateOffset(months=(trainWindow + testWindow))))]
+                    self.data['public_date'] < (startDate + pd.DateOffset(months=(trainWindow + testWindow))))]
 
             # linear interpolation
             if interpolation == 'linear':
@@ -236,13 +222,13 @@ class Training:
                     # print(col, ticker)
                     ind = data_processed[data_processed['Ticker'] == ticker]['Industry'].head(1).values[0]
                     data_processed.loc[data_processed[data_processed['Ticker'] == ticker].index.tolist(), col] = \
-                    data_processed[data_processed['Industry'] == ind][col].median()
+                        data_processed[data_processed['Industry'] == ind][col].median()
             train_data = data_processed[(data_processed['public_date'] >= startDate) & (
-                        data_processed['public_date'] < (startDate + pd.DateOffset(months=trainWindow)))]
+                    data_processed['public_date'] < (startDate + pd.DateOffset(months=trainWindow)))]
             test_data = data_processed[
                 (data_processed['public_date'] >= (startDate + pd.DateOffset(months=trainWindow))) & (
-                            data_processed['public_date'] < (
-                                startDate + pd.DateOffset(months=(trainWindow + testWindow))))]
+                        data_processed['public_date'] < (
+                        startDate + pd.DateOffset(months=(trainWindow + testWindow))))]
 
             train_data.drop_duplicates(inplace=True)
             test_data.drop_duplicates(inplace=True)
@@ -298,7 +284,7 @@ class Training:
         probabilities = classifier.predict_proba(test_X)
         prob = []
         for idx, val in enumerate(predictions):
-            prob.append(probabilities[idx][val+2])
+            prob.append(probabilities[idx][val + 2])
         predict_df['predict_prob'] = prob
         cf = confusion_matrix(test_y, predictions)
         op_accuracy = cf[0][0] / sum(cf[0])
@@ -331,7 +317,7 @@ class Training:
         probabilities = classifier.predict_proba(test_X)
         prob = []
         for idx, val in enumerate(predictions):
-            prob.append(probabilities[idx][val+2])
+            prob.append(probabilities[idx][val + 2])
         predict_df['predict_prob'] = prob
         cf = confusion_matrix(test_y, predictions)
         op_accuracy = cf[0][0] / sum(cf[0])
@@ -363,7 +349,7 @@ class Training:
         probabilities = classifier.predict_proba(test_X)
         prob = []
         for idx, val in enumerate(predictions):
-            prob.append(probabilities[idx][val+2])
+            prob.append(probabilities[idx][val + 2])
         predict_df['predict_prob'] = prob
         cf = confusion_matrix(test_y, predictions)
         op_accuracy = cf[0][0] / sum(cf[0])
@@ -403,7 +389,6 @@ class Portfolio:
         self.price_df = price_data
 
     def get_transaction_costs(self, prev_stocks, curr_stocks):
-        global ticker_list
         tr_cost_rate = 0.0001  # assumed 0.1% transaction cost for either buy or sell
         tr_cost = 0
         for x in ticker_list:
@@ -427,40 +412,44 @@ class Portfolio:
 
         month, year = test_data['month'].unique()[0], test_data['year'].unique()[0]
         if valuation == 'mean':
-            ret_long_only = self.price_df[(self.price_df['month'] == month) & (self.price_df['year'] == year) & (
+            ret_long_only = price_df[(self.price_df['month'] == month) & (self.price_df['year'] == year) & (
                 self.price_df['TICKER'].isin(stocks_long))]['ret'].mean()
-            ret_short_only = -1 * self.price_df[(self.price_df['month'] == month) & (self.price_df['year'] == year) & (
+            ret_short_only = -1 * price_df[(self.price_df['month'] == month) & (self.price_df['year'] == year) & (
                 self.price_df['TICKER'].isin(stocks_short))]['ret'].mean()
             return ret_long_only, ret_short_only, (
                         len(stocks_long) * ret_long_only + len(stocks_short) * ret_short_only) / (
                                len(stocks_short) + len(stocks_long)), stocks_long, stocks_short
-        elif valuation == 'market cap':
-            long_filtered = self.price_df[(self.price_df['month'] == month) & (self.price_df['year'] == year) & (self.price_df['TICKER'].isin(stocks_long))]
-            short_filtered = self.price_df[(self.price_df['month'] == month) & (self.price_df['year'] == year) & (self.price_df['TICKER'].isin(stocks_short))]
-            ret_long_only = sum(long_filtered['PRC'] * long_filtered['ADJSHRS'] * long_filtered['ret'] / sum(long_filtered['PRC'] * long_filtered['ADJSHRS']))
-            ret_short_only = -1 * sum(short_filtered['PRC'] * short_filtered['ADJSHRS'] * short_filtered['ret'] / sum(short_filtered['PRC'] * short_filtered['ADJSHRS']))
-            ret_long_short = (ret_long_only * sum(long_filtered['PRC'] * long_filtered['ADJSHRS']) + ret_short_only * sum(short_filtered['PRC'] * short_filtered['ADJSHRS'])) / (sum(long_filtered['PRC'] * long_filtered['ADJSHRS']) + sum(short_filtered['PRC'] * short_filtered['ADJSHRS']))
-            return ret_long_only, ret_short_only, ret_long_short
         elif valuation == 'dollar neutral refreshed':
-            # long_filtered = self.price_df[(self.price_df['month'] == month) & (self.price_df['year'] == year) & (self.price_df['TICKER'].isin(stocks_long))]
-            # short_filtered = self.price_df[(self.price_df['month'] == month) & (self.price_df['year'] == year) & (self.price_df['TICKER'].isin(stocks_short))]
-            # long_value_end = sum((1 + long_filtered['ret']) / long_filtered.shape[0])
-            # short_value_end = sum((1 + short_filtered['ret']) / short_filtered.shape[0])
-            # long_short_return = long_value_end - short_value_end
-            # return long_filtered['ret'].mean(), -1 * short_filtered['ret'].mean(), long_short_return, stocks_long, stocks_short
-            ret_long_only = self.price_df[(self.price_df['month'] == month) & (self.price_df['year'] == year) & (self.price_df['TICKER'].isin(stocks_long))]['ret'].mean()
-            ret_short_only = -1 * self.price_df[(self.price_df['month'] == month) & (self.price_df['year'] == year) & (self.price_df['TICKER'].isin(stocks_short))]['ret'].mean()
-            return ret_long_only, ret_short_only, 0.5 * ret_long_only + 0.5 * ret_short_only, stocks_long, stocks_short
+            long_filtered = price_df[(self.price_df['month'] == month) & (self.price_df['year'] == year) & (
+                self.price_df['TICKER'].isin(stocks_long))]
+            short_filtered = price_df[(self.price_df['month'] == month) & (self.price_df['year'] == year) & (
+                self.price_df['TICKER'].isin(stocks_short))]
+            # port_start = 100
+            # value_long = port_start / long_filtered.shape[0]
+            # value_short = port_start / short_filtered.shape[0]
+            # long_value_end = sum((1 + long_filtered['ret']) * port_start / long_filtered.shape[0])
+            long_value_end = sum((1 + long_filtered['ret']) / long_filtered.shape[0])
+            # short_value_end = sum((1 + short_filtered['ret']) * port_start / short_filtered.shape[0])
+            short_value_end = sum((1 + short_filtered['ret']) / short_filtered.shape[0])
+            # port_end = long_value_end + (port_start - short_value_end)
+            long_short_return = long_value_end - short_value_end
+            # long_short_return = (long_value_end - short_value_end) / port_start
+            return long_filtered['ret'].mean(), -1 * short_filtered[
+                'ret'].mean(), long_short_return, stocks_long, stocks_short
 
-    def returns(self, trainObj, startDate, EndDate, trainWindow, testWindow, bucket='five_bucket', quantiles=[-2, 2], Algo='AdaBoost', interpolation='linear',valuation='mean',filsterStocks='no_rule',all_combined=True):
+    def returns(self, trainObj, startDate, EndDate, trainWindow, testWindow, bucket='five_bucket', quantiles=[-2, 2],
+                Algo='AdaBoost', interpolation='linear', valuation='mean', filsterStocks='no_rule', all_combined=True):
+        global ticker_list
         returns_dict = {}
         feature_imp_dict = {}
         op_up_acc_dict = {}
         date = startDate
-        prev_stocks = defaultdict(int)
+        prev_stocks = pd.DataFrame(np.zeros(shape=(len(ticker_list), 3)), columns=['Long', 'Short', 'LS'],
+                                   index=ticker_list)
         while (date <= EndDate):
             print(date)
-            curr_stocks = defaultdict(int)
+            curr_stocks = pd.DataFrame(np.zeros(shape=(len(ticker_list), 3)), columns=['Long', 'Short', 'LS'],
+                                       index=ticker_list)
             train_data, test_data = trainObj.get_cleaned_date(date, trainWindow, testWindow, bucket, interpolation)
             if Algo == 'Combination':
                 test_a, _, _ = trainObj.adaBoost_train(train_data, test_data)
@@ -486,7 +475,9 @@ class Portfolio:
                 tmp.rename(columns={'All3': 'prediction'} if all_combined else {'2same': 'prediction'}, inplace=True)
                 tmp['month'] = test_a['month']
                 tmp['year'] = test_a['year']
-                long_only_return, short_only_return, long_short_return, long, short = self.construction(tmp,quantiles,valuation,filsterStocks)
+                long_only_return, short_only_return, long_short_return, long, short = self.construction(tmp,
+                                                                                                        quantiles
+                                                                                                        )
                 print(long)
                 dt = test_data['public_date'].unique()[0]
                 # print(long_only_return, short_only_return, long_short_return)
@@ -495,7 +486,7 @@ class Portfolio:
                 for x in short:
                     curr_stocks[x] = -1
                 tr_cost = self.get_transaction_costs(prev_stocks, curr_stocks)
-                returns_dict[dt] = [long_only_return, short_only_return, long_short_return - tr_cost, len(long),
+                returns_dict[dt] = [long_only_return, short_only_return, long_short_return, len(long),
                                     len(short)]
                 prev_stocks = curr_stocks
                 # set_trace()
@@ -505,19 +496,20 @@ class Portfolio:
                 test_with_prediction, imp_features, accu = trainObj.adaBoost_train(train_data, test_data)
                 long_only_return, short_only_return, long_short_return, long, short = self.construction(
                     test_with_prediction,
-                    quantiles,valuation,filsterStocks)
+                    quantiles)
                 dt = test_data['public_date'].unique()[0]
+                set_trace()
                 # print(long_only_return, short_only_return, long_short_return)
-                for x in long:
-                    curr_stocks[x] = 1
-                for x in short:
-                    curr_stocks[x] = -1
-                #tr_cost = self.get_transaction_costs(prev_stocks, curr_stocks)
+                curr_stocks.loc[curr_stocks.index.isin(long), 'Long'] = 1 / (len(long))
+                curr_stocks.loc[curr_stocks.index.isin(short), 'Short'] = 1 / (len(short))
+                curr_stocks.loc[curr_stocks.index.isin(short + long), 'LS'] = 1 / (len(short) + len(long))
+
+                # tr_cost = self.get_transaction_costs(prev_stocks, curr_stocks)
                 returns_dict[dt] = [long_only_return, short_only_return, long_short_return, len(long),
                                     len(short)]
                 feature_imp_dict[dt] = imp_features
                 op_up_acc_dict[dt] = accu
-                prev_stocks = curr_stocks
+                prev_stocks = curr_stocks.copy()
                 # set_trace()
                 date = date + pd.DateOffset(months=1)
 
@@ -525,7 +517,7 @@ class Portfolio:
                 test_with_prediction, imp_features, accu = trainObj.gradientBoost_train(train_data, test_data)
                 long_only_return, short_only_return, long_short_return, long, short = self.construction(
                     test_with_prediction,
-                    quantiles,valuation,filsterStocks)
+                    quantiles)
                 dt = test_data['public_date'].unique()[0]
                 # print(long_only_return, short_only_return, long_short_return)
                 returns_dict[dt] = [long_only_return, short_only_return, long_short_return, len(long), len(short)]
@@ -537,7 +529,7 @@ class Portfolio:
                 test_with_prediction, imp_features, accu = trainObj.randomforest_train(train_data, test_data)
                 long_only_return, short_only_return, long_short_return, long, short = self.construction(
                     test_with_prediction,
-                    quantiles,valuation,filsterStocks)
+                    quantiles)
                 dt = test_data['public_date'].unique()[0]
                 # print(long_only_return, short_only_return, long_short_return)
                 returns_dict[dt] = [long_only_return, short_only_return, long_short_return, len(long), len(short)]
@@ -670,9 +662,10 @@ print(reg_df.shape)
 reg_df.drop_duplicates(subset=['Ticker', 'year', 'month'], inplace=True)
 print(reg_df.shape)
 
+
+
 train = Training(reg_df)
 port = Portfolio(price_df)
-
 startDate = pd.to_datetime('20000128', format='%Y%m%d')
 #endDate = pd.to_datetime('20171128', format='%Y%m%d')
 endDate = pd.to_datetime('20000428',format='%Y%m%d')
@@ -681,10 +674,13 @@ test_windon = 1  # in months
 interpolation = 'linear'
 price_buckets = 'five_bucket'
 portfolio_buckets = [-2, 2]
-algos = ['AdaBoost']
+algos = ['AdaBoost','GradientBoost','RandomForest']
 valuation = 'mean'
 filterStocks = 'probability'
 # algos = algos[1:]
+if not os.path.exists("./Results"):
+    os.mkdir("./Results")
+
 for algo in algos:
     print(algo)
     returns_df, feature_imp, accuracy_df = port.returns(train, startDate, endDate, train_window, test_windon,
@@ -693,3 +689,9 @@ for algo in algos:
     feature_imp.to_csv('./Results/' + algo + '_'+valuation+'_'+filterStocks+'_' + interpolation + '_feature_importance.csv')
     accuracy_df.to_csv('./Results/' + algo + '_'+valuation+'_'+filterStocks+'_' + interpolation + '_accuracy.csv')
     # print(returns_df)
+
+p = Plot_results()
+p.plot_benchmark_aqr()
+p.plot_bench_results()
+p.plot_our_results(returns_df)
+p.plot_combined(returns_df,pd.to_datetime('20150201',format='%Y%m%d'),pd.to_datetime('20150531',format='%Y%m%d'))
