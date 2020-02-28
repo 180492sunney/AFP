@@ -225,11 +225,11 @@ class Training:
 
             return train_data, test_data
 
-    def generateTrainTestFiles(startDate, endDate, trainWindow, testWindow, bucket, interpolation):
+    def generateTrainTestFiles(self, startDate, endDate, trainWindow, testWindow, bucket, interpolation):
         date = startDate
         while (date <= endDate):
             print(date)
-            train_data, test_data = train.get_cleaned_date(date, trainWindow, testWindow, bucket, interpolation)
+            train_data, test_data = self.get_cleaned_date(date, trainWindow, testWindow, bucket, interpolation)
             # train_data.to_csv("./TrainData/trainData_"+str(date.date())+"_"+str(trainWindow)+"_"+str(testWindow)+"_"+interpolation+".csv")
             # test_data.to_csv("./TestData/testData_"+str(date.date())+"_"+str(trainWindow)+"_"+str(testWindow)+"_"+interpolation+".csv")
             date = date + pd.DateOffset(months=1)
@@ -252,14 +252,20 @@ class Training:
         # print(test_X.shape)
         # print(train_y.shape)
         # print(test_y.shape)
+        predict_df = test_data.copy()
         classifier = AdaBoostClassifier(DecisionTreeClassifier(max_depth=1), n_estimators=200)
         classifier.fit(train_X, train_y)
         predictions = classifier.predict(test_X)
-        test_data['prediction'] = predictions
+        predict_df['prediction'] = predictions
+        probabilities = classifier.predict_proba(test_X)
+        prob = []
+        for idx, val in enumerate(predictions):
+            prob.append(probabilities[idx][val+2])
+        predict_df['predict_prob'] = prob
         cf = confusion_matrix(test_y, predictions)
         op_accuracy = cf[0][0] / sum(cf[0])
         up_accuracy = cf[-1][-1] / sum(cf[-1])
-        return test_data, classifier.feature_importances_, [op_accuracy, up_accuracy]
+        return predict_df, classifier.feature_importances_, [op_accuracy, up_accuracy]
 
     def gradientBoost_train(self, train_data, test_data):
         from sklearn.ensemble import GradientBoostingClassifier
@@ -279,14 +285,20 @@ class Training:
         # print(test_X.shape)
         # print(train_y.shape)
         # print(test_y.shape)
+        predict_df = test_data.copy()
         classifier = GradientBoostingClassifier(max_depth=1, n_estimators=200)
         classifier.fit(train_X, train_y)
         predictions = classifier.predict(test_X)
-        test_data['prediction'] = predictions
+        predict_df['prediction'] = predictions
+        probabilities = classifier.predict_proba(test_X)
+        prob = []
+        for idx, val in enumerate(predictions):
+            prob.append(probabilities[idx][val+2])
+        predict_df['predict_prob'] = prob
         cf = confusion_matrix(test_y, predictions)
         op_accuracy = cf[0][0] / sum(cf[0])
         up_accuracy = cf[-1][-1] / sum(cf[-1])
-        return test_data, classifier.feature_importances_, [op_accuracy, up_accuracy]
+        return predict_df, classifier.feature_importances_, [op_accuracy, up_accuracy]
 
     def randomforest_train(self, train_data, test_data):
         from sklearn.ensemble import RandomForestClassifier
@@ -305,14 +317,20 @@ class Training:
         # print(test_X.shape)
         # print(train_y.shape)
         # print(test_y.shape)
+        predict_df = test_data.copy()
         classifier = RandomForestClassifier(criterion='gini', max_depth=1, n_estimators=200)
         classifier.fit(train_X, train_y)
         predictions = classifier.predict(test_X)
-        test_data['prediction'] = predictions
+        predict_df['prediction'] = predictions
+        probabilities = classifier.predict_proba(test_X)
+        prob = []
+        for idx, val in enumerate(predictions):
+            prob.append(probabilities[idx][val+2])
+        predict_df['predict_prob'] = prob
         cf = confusion_matrix(test_y, predictions)
         op_accuracy = cf[0][0] / sum(cf[0])
         up_accuracy = cf[-1][-1] / sum(cf[-1])
-        return test_data, classifier.feature_importances_, [op_accuracy, up_accuracy]
+        return predict_df, classifier.feature_importances_, [op_accuracy, up_accuracy]
 
     def logisticregression_train(self, train_data, test_data):
         from sklearn.linear_model import LogisticRegression
@@ -347,16 +365,21 @@ class Portfolio:
         self.price_df = price_data
 
     def construction(self, test_data, quantiles):
-        stocks_long = list(test_data[test_data['prediction'].isin([a for a in quantiles if a > 0])]['Ticker'].unique())
-        stocks_short = list(test_data[test_data['prediction'].isin([a for a in quantiles if a < 0])]['Ticker'].unique())
+        all_long = test_data[test_data['prediction'].isin([a for a in quantiles if a > 0])]
+        all_long = all_long[all_long['predict_prob'] > all_long['predict_prob'].quantile(0.8)]
+        stocks_long = list(all_long['Ticker'].unique())
+        # stocks_long = list(test_data[test_data['prediction'].isin([a for a in quantiles if a > 0])]['Ticker'].unique())
+        all_short = test_data[test_data['prediction'].isin([a for a in quantiles if a < 0])]
+        all_short = all_short[all_short['predict_prob'] > all_short['predict_prob'].quantile(0.8)]
+        stocks_short = list(all_short['Ticker'].unique())
+        # stocks_short = list(test_data[test_data['prediction'].isin([a for a in quantiles if a < 0])]['Ticker'].unique())
         month, year = test_data['month'].unique()[0], test_data['year'].unique()[0]
-        ret_long_only = price_df[(self.price_df['month'] == month) & (self.price_df['year'] == year) & (
-            self.price_df['TICKER'].isin(stocks_long))]['ret'].mean()
-        ret_short_only = -1 * price_df[(self.price_df['month'] == month) & (self.price_df['year'] == year) & (
-            self.price_df['TICKER'].isin(stocks_short))]['ret'].mean()
-        return ret_long_only, ret_short_only, (0.5 * ret_long_only + 0.5 * ret_short_only), stocks_long, stocks_short
+        ret_long_only = price_df[(self.price_df['month'] == month) & (self.price_df['year'] == year) & (self.price_df['TICKER'].isin(stocks_long))]['ret'].mean()
+        ret_short_only = -1 * price_df[(self.price_df['month'] == month) & (self.price_df['year'] == year) & (self.price_df['TICKER'].isin(stocks_short))]['ret'].mean()
+        return ret_long_only, ret_short_only, (len(stocks_long) * ret_long_only + len(stocks_short) * ret_short_only) / (len(stocks_short) + len(stocks_long)), stocks_long, stocks_short
 
-    def returns(self, trainObj, startDate, EndDate, trainWindow, testWindow, bucket='five_bucket', quantiles=[-2, 2], Algo='AdaBoost', interpolation='linear'):
+
+def returns(self, trainObj, startDate, EndDate, trainWindow, testWindow, bucket='five_bucket', quantiles=[-2, 2], Algo='AdaBoost', interpolation='linear'):
         returns_dict = {}
         feature_imp_dict = {}
         op_up_acc_dict = {}
@@ -528,15 +551,17 @@ port = Portfolio(price_df)
 startDate = pd.to_datetime('20150201',format='%Y%m%d')
 endDate = pd.to_datetime('20150531',format='%Y%m%d')
 train_window = 12 #in months
-test_windon = 1 #in months
+test_window = 1 #in months
 interpolation = 'linear'
 price_buckets = 'five_bucket'
 portfolio_buckets = [-2,2]
-algos = ['AdaBoost','GradientBoost','RandomForest']
+#algos = ['AdaBoost','GradientBoost','RandomForest']
+algos = ['AdaBoost']
+
 #algos = algos[1:]
 for algo in algos:
     print(algo)
-    returns_df,feature_imp,accuracy_df = port.returns(train, startDate, endDate, train_window, test_windon, price_buckets, portfolio_buckets, algo, interpolation)
+    returns_df,feature_imp,accuracy_df = port.returns(train, startDate, endDate, train_window, test_window, price_buckets, portfolio_buckets, algo, interpolation)
     returns_df.to_csv('./Results/' +algo+ '_returns.csv')
     feature_imp.to_csv('./Results/' +algo+ '_feature_importance.csv')
     accuracy_df.to_csv('./Results/' +algo+ '_accuracy.csv')
