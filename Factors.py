@@ -409,9 +409,9 @@ class Portfolio:
             tr_cost += abs(curr_stocks[x] - prev_stocks[x]) * tr_cost_rate
         return tr_cost
 
-    def construction(self, test_data, quantiles, valuation='mean', filterStocks='no rule'):
+    def construction(self, test_data, quantiles, valuation='mean', filterStocks='no_rule'):
 
-        if filterStocks == 'no rule':
+        if filterStocks == 'no_rule':
             stocks_long = list(
                 test_data[test_data['prediction'].isin([a for a in quantiles if a > 0])]['Ticker'].unique())
             stocks_short = list(
@@ -431,14 +431,14 @@ class Portfolio:
             ret_short_only = -1 * self.price_df[(self.price_df['month'] == month) & (self.price_df['year'] == year) & (
                 self.price_df['TICKER'].isin(stocks_short))]['ret'].mean()
             return ret_long_only, ret_short_only, (len(stocks_long) * ret_long_only + len(stocks_short) * ret_short_only) / (len(stocks_short) + len(stocks_long)), stocks_long, stocks_short
-        elif valuation == 'market cap':
+        elif valuation == 'market_cap':
             long_filtered = self.price_df[(self.price_df['month'] == month) & (self.price_df['year'] == year) & (self.price_df['TICKER'].isin(stocks_long))]
             short_filtered = self.price_df[(self.price_df['month'] == month) & (self.price_df['year'] == year) & (self.price_df['TICKER'].isin(stocks_short))]
             ret_long_only = sum(long_filtered['PRC'] * long_filtered['ADJSHRS'] * long_filtered['ret'] / sum(long_filtered['PRC'] * long_filtered['ADJSHRS']))
             ret_short_only = -1 * sum(short_filtered['PRC'] * short_filtered['ADJSHRS'] * short_filtered['ret'] / sum(short_filtered['PRC'] * short_filtered['ADJSHRS']))
             ret_long_short = (ret_long_only * sum(long_filtered['PRC'] * long_filtered['ADJSHRS']) + ret_short_only * sum(short_filtered['PRC'] * short_filtered['ADJSHRS'])) / (sum(long_filtered['PRC'] * long_filtered['ADJSHRS']) + sum(short_filtered['PRC'] * short_filtered['ADJSHRS']))
             return ret_long_only, ret_short_only, ret_long_short
-        elif valuation == 'dollar neutral refreshed':
+        elif valuation == 'dollar_neutral_refreshed':
             # long_filtered = self.price_df[(self.price_df['month'] == month) & (self.price_df['year'] == year) & (self.price_df['TICKER'].isin(stocks_long))]
             # short_filtered = self.price_df[(self.price_df['month'] == month) & (self.price_df['year'] == year) & (self.price_df['TICKER'].isin(stocks_short))]
             # long_value_end = sum((1 + long_filtered['ret']) / long_filtered.shape[0])
