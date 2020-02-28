@@ -411,7 +411,7 @@ class Portfolio:
         return ret_long_only, ret_short_only, (len(stocks_long) * ret_long_only + len(stocks_short) * ret_short_only) / (len(stocks_short) + len(stocks_long)), stocks_long, stocks_short
 
 
-def returns(self, trainObj, startDate, EndDate, trainWindow, testWindow, bucket='five_bucket', quantiles=[-2, 2], Algo='AdaBoost', interpolation='linear'):
+def returns(self, trainObj, startDate, EndDate, trainWindow, testWindow, bucket='five_bucket', quantiles=[-2, 2], Algo='AdaBoost', interpolation='linear',all_combined=True):
         returns_dict = {}
         feature_imp_dict = {}
         op_up_acc_dict = {}
@@ -609,7 +609,7 @@ class Plot_results:
         df = pd.merge(cum_ret_benchmark, returns_t, on=['year', 'month'], how='inner')
         set_trace()
         fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(20, 10))
-        xticks = pd.to_datetime(cum_ret['Date_x'])
+        xticks = pd.to_datetime(cum_ret_benchmark['Date_x'])
         ax.plot(xticks, df['Cum_Val'], marker='o', label='AQR Value')
         ax.plot(xticks, df['Cum_Mom'], marker='o', label='AQR Mom')
         ax.plot(xticks, df['Cum_L'], marker='o', label='Long_Only')
