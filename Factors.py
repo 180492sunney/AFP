@@ -88,6 +88,20 @@ class PriceData:
         price_df = price_df[['TICKER', 'date', 'PRC']]
         ticker_list = price_df['TICKER'].unique()
         price_df['date'] = pd.to_datetime(price_df['date'], format='%Y-%m-%d')
+
+        mktcap_df = pd.read_csv('price_data.csv')
+        mktcap_df['ADJSHRS'] = (mktcap_df['SHROUT'] * mktcap_df['CFACSHR'])
+        mktcap_df['date'] = pd.to_datetime(mktcap_df['date'], format='%Y%m%d')
+        for tick in ticker_list:
+            mktcap_df.loc[mktcap_df['TICKER'] == str(tick), 'ADJSHRS'] = mktcap_df[
+                mktcap_df['TICKER'] == str(tick)].ADJSHRS.ffill(axis=0)
+            mktcap_df.loc[mktcap_df['TICKER'] == str(tick), 'ADJSHRS'] = mktcap_df[
+                mktcap_df['TICKER'] == str(tick)].ADJSHRS.bfill(axis=0)
+        price_df = pd.merge(price_df, mktcap_df[['date', 'TICKER', 'ADJSHRS']], how='left', on=['date', 'TICKER'])
+        price_df = price_df[['TICKER', 'date', 'PRC', 'ADJSHRS']]
+        price_df['ADJSHRS'] = price_df.groupby('TICKER')['ADJSHRS'].transform(lambda v: v.ffill())
+        price_df['ADJSHRS'] = price_df.groupby('TICKER')['ADJSHRS'].transform(lambda v: v.bfill())
+
         price_df['ret'] = price_df.groupby(['TICKER'], as_index=False).PRC.pct_change()
         for tick in ticker_list:
             price_df.loc[price_df['TICKER'] == str(tick), 'ret'] = price_df[price_df['TICKER'] == str(tick)].ret.shift(
@@ -396,11 +410,13 @@ class Portfolio:
             tr_cost += abs(curr_stocks[x] - prev_stocks[x]) * tr_cost_rate
         return tr_cost
 
-    def construction(self, test_data, quantiles, valuation='mean', filterStocks='no_rule'):
+    def construction(self, test_data, quantiles, valuation='mean', filterStocks='no rule'):
 
-        if filterStocks == 'no_rule':
-            stocks_long = list(test_data[test_data['prediction'].isin([a for a in quantiles if a > 0])]['Ticker'].unique())
-            stocks_short = list(test_data[test_data['prediction'].isin([a for a in quantiles if a < 0])]['Ticker'].unique())
+        if filterStocks == 'no rule':
+            stocks_long = list(
+                test_data[test_data['prediction'].isin([a for a in quantiles if a > 0])]['Ticker'].unique())
+            stocks_short = list(
+                test_data[test_data['prediction'].isin([a for a in quantiles if a < 0])]['Ticker'].unique())
         elif filterStocks == 'probability':
             all_long = test_data[test_data['prediction'].isin([a for a in quantiles if a > 0])]
             all_long = all_long[all_long['predict_prob'] > all_long['predict_prob'].quantile(0.8)]
@@ -411,23 +427,30 @@ class Portfolio:
 
         month, year = test_data['month'].unique()[0], test_data['year'].unique()[0]
         if valuation == 'mean':
-            ret_long_only = price_df[(self.price_df['month'] == month) & (self.price_df['year'] == year) & (self.price_df['TICKER'].isin(stocks_long))]['ret'].mean()
-            ret_short_only = -1 * price_df[(self.price_df['month'] == month) & (self.price_df['year'] == year) & (self.price_df['TICKER'].isin(stocks_short))]['ret'].mean()
-            return ret_long_only, ret_short_only, (len(stocks_long) * ret_long_only + len(stocks_short) * ret_short_only) / (len(stocks_short) + len(stocks_long)), stocks_long, stocks_short
+            ret_long_only = self.price_df[(self.price_df['month'] == month) & (self.price_df['year'] == year) & (
+                self.price_df['TICKER'].isin(stocks_long))]['ret'].mean()
+            ret_short_only = -1 * self.price_df[(self.price_df['month'] == month) & (self.price_df['year'] == year) & (
+                self.price_df['TICKER'].isin(stocks_short))]['ret'].mean()
+            return ret_long_only, ret_short_only, (
+                        len(stocks_long) * ret_long_only + len(stocks_short) * ret_short_only) / (
+                               len(stocks_short) + len(stocks_long)), stocks_long, stocks_short
+        elif valuation == 'market cap':
+            long_filtered = self.price_df[(self.price_df['month'] == month) & (self.price_df['year'] == year) & (self.price_df['TICKER'].isin(stocks_long))]
+            short_filtered = self.price_df[(self.price_df['month'] == month) & (self.price_df['year'] == year) & (self.price_df['TICKER'].isin(stocks_short))]
+            ret_long_only = sum(long_filtered['PRC'] * long_filtered['ADJSHRS'] * long_filtered['ret'] / sum(long_filtered['PRC'] * long_filtered['ADJSHRS']))
+            ret_short_only = -1 * sum(short_filtered['PRC'] * short_filtered['ADJSHRS'] * short_filtered['ret'] / sum(short_filtered['PRC'] * short_filtered['ADJSHRS']))
+            ret_long_short = (ret_long_only * sum(long_filtered['PRC'] * long_filtered['ADJSHRS']) + ret_short_only * sum(short_filtered['PRC'] * short_filtered['ADJSHRS'])) / (sum(long_filtered['PRC'] * long_filtered['ADJSHRS']) + sum(short_filtered['PRC'] * short_filtered['ADJSHRS']))
+            return ret_long_only, ret_short_only, ret_long_short
         elif valuation == 'dollar neutral refreshed':
-            long_filtered = price_df[(self.price_df['month'] == month) & (self.price_df['year'] == year) & (self.price_df['TICKER'].isin(stocks_long))]
-            short_filtered = price_df[(self.price_df['month'] == month) & (self.price_df['year'] == year) & (self.price_df['TICKER'].isin(stocks_short))]
-            #port_start = 100
-            #value_long = port_start / long_filtered.shape[0]
-            #value_short = port_start / short_filtered.shape[0]
-            #long_value_end = sum((1 + long_filtered['ret']) * port_start / long_filtered.shape[0])
-            long_value_end = sum((1 + long_filtered['ret']) / long_filtered.shape[0])
-            #short_value_end = sum((1 + short_filtered['ret']) * port_start / short_filtered.shape[0])
-            short_value_end = sum((1 + short_filtered['ret']) / short_filtered.shape[0])
-            #port_end = long_value_end + (port_start - short_value_end)
-            long_short_return = long_value_end - short_value_end
-            #long_short_return = (long_value_end - short_value_end) / port_start
-            return long_filtered['ret'].mean(), -1 * short_filtered['ret'].mean(), long_short_return, stocks_long, stocks_short
+            # long_filtered = self.price_df[(self.price_df['month'] == month) & (self.price_df['year'] == year) & (self.price_df['TICKER'].isin(stocks_long))]
+            # short_filtered = self.price_df[(self.price_df['month'] == month) & (self.price_df['year'] == year) & (self.price_df['TICKER'].isin(stocks_short))]
+            # long_value_end = sum((1 + long_filtered['ret']) / long_filtered.shape[0])
+            # short_value_end = sum((1 + short_filtered['ret']) / short_filtered.shape[0])
+            # long_short_return = long_value_end - short_value_end
+            # return long_filtered['ret'].mean(), -1 * short_filtered['ret'].mean(), long_short_return, stocks_long, stocks_short
+            ret_long_only = self.price_df[(self.price_df['month'] == month) & (self.price_df['year'] == year) & (self.price_df['TICKER'].isin(stocks_long))]['ret'].mean()
+            ret_short_only = -1 * self.price_df[(self.price_df['month'] == month) & (self.price_df['year'] == year) & (self.price_df['TICKER'].isin(stocks_short))]['ret'].mean()
+            return ret_long_only, ret_short_only, 0.5 * ret_long_only + 0.5 * ret_short_only, stocks_long, stocks_short
 
     def returns(self, trainObj, startDate, EndDate, trainWindow, testWindow, bucket='five_bucket', quantiles=[-2, 2], Algo='AdaBoost', interpolation='linear',valuation='mean',filsterStocks='no_rule',all_combined=True):
         returns_dict = {}
