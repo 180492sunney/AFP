@@ -396,9 +396,9 @@ class Portfolio:
             tr_cost += abs(curr_stocks[x] - prev_stocks[x]) * tr_cost_rate
         return tr_cost
 
-    def construction(self, test_data, quantiles, valuation='mean', filterStocks='no rule'):
+    def construction(self, test_data, quantiles, valuation='mean', filterStocks='no_rule'):
 
-        if filterStocks == 'no rule':
+        if filterStocks == 'no_rule':
             stocks_long = list(test_data[test_data['prediction'].isin([a for a in quantiles if a > 0])]['Ticker'].unique())
             stocks_short = list(test_data[test_data['prediction'].isin([a for a in quantiles if a < 0])]['Ticker'].unique())
         elif filterStocks == 'probability':
@@ -429,14 +429,12 @@ class Portfolio:
             #long_short_return = (long_value_end - short_value_end) / port_start
             return long_filtered['ret'].mean(), -1 * short_filtered['ret'].mean(), long_short_return, stocks_long, stocks_short
 
-
-def returns(self, trainObj, startDate, EndDate, trainWindow, testWindow, bucket='five_bucket', quantiles=[-2, 2], Algo='AdaBoost', interpolation='linear',all_combined=True):
+    def returns(self, trainObj, startDate, EndDate, trainWindow, testWindow, bucket='five_bucket', quantiles=[-2, 2], Algo='AdaBoost', interpolation='linear',valuation='mean',filsterStocks='no_rule',all_combined=True):
         returns_dict = {}
         feature_imp_dict = {}
         op_up_acc_dict = {}
         date = startDate
         prev_stocks = defaultdict(int)
-        port_val = 1
         while (date <= EndDate):
             print(date)
             curr_stocks = defaultdict(int)
@@ -465,9 +463,7 @@ def returns(self, trainObj, startDate, EndDate, trainWindow, testWindow, bucket=
                 tmp.rename(columns={'All3': 'prediction'} if all_combined else {'2same': 'prediction'}, inplace=True)
                 tmp['month'] = test_a['month']
                 tmp['year'] = test_a['year']
-                long_only_return, short_only_return, long_short_return, long, short = self.construction(tmp,
-                                                                                                        quantiles,
-                                                                                                        port_val)
+                long_only_return, short_only_return, long_short_return, long, short = self.construction(tmp,quantiles,valuation,filsterStocks)
                 print(long)
                 dt = test_data['public_date'].unique()[0]
                 # print(long_only_return, short_only_return, long_short_return)
@@ -479,8 +475,6 @@ def returns(self, trainObj, startDate, EndDate, trainWindow, testWindow, bucket=
                 returns_dict[dt] = [long_only_return, short_only_return, long_short_return - tr_cost, len(long),
                                     len(short)]
                 prev_stocks = curr_stocks
-                port_val = long_only_return
-                print(port_val)
                 # set_trace()
                 date = date + pd.DateOffset(months=1)
 
@@ -488,42 +482,42 @@ def returns(self, trainObj, startDate, EndDate, trainWindow, testWindow, bucket=
                 test_with_prediction, imp_features, accu = trainObj.adaBoost_train(train_data, test_data)
                 long_only_return, short_only_return, long_short_return, long, short = self.construction(
                     test_with_prediction,
-                    quantiles, port_val)
+                    quantiles,valuation,filsterStocks)
                 dt = test_data['public_date'].unique()[0]
                 # print(long_only_return, short_only_return, long_short_return)
                 for x in long:
                     curr_stocks[x] = 1
                 for x in short:
                     curr_stocks[x] = -1
-                tr_cost = self.get_transaction_costs(prev_stocks, curr_stocks)
-                returns_dict[dt] = [long_only_return, short_only_return, long_short_return - tr_cost, len(long),
+                #tr_cost = self.get_transaction_costs(prev_stocks, curr_stocks)
+                returns_dict[dt] = [long_only_return, short_only_return, long_short_return, len(long),
                                     len(short)]
                 feature_imp_dict[dt] = imp_features
                 op_up_acc_dict[dt] = accu
                 prev_stocks = curr_stocks
-                port_val = long_only_return
-                print(port_val)
                 # set_trace()
                 date = date + pd.DateOffset(months=1)
 
             if Algo == 'GradientBoost':
                 test_with_prediction, imp_features, accu = trainObj.gradientBoost_train(train_data, test_data)
-                long_only_return, short_only_return, long_short_return, _, _ = self.construction(test_with_prediction,
-                                                                                                 quantiles)
+                long_only_return, short_only_return, long_short_return, long, short = self.construction(
+                    test_with_prediction,
+                    quantiles,valuation,filsterStocks)
                 dt = test_data['public_date'].unique()[0]
                 # print(long_only_return, short_only_return, long_short_return)
-                returns_dict[dt] = [long_only_return, short_only_return, long_short_return]
+                returns_dict[dt] = [long_only_return, short_only_return, long_short_return, len(long), len(short)]
                 feature_imp_dict[dt] = imp_features
                 op_up_acc_dict[dt] = accu
                 date = date + pd.DateOffset(months=1)
 
             if Algo == 'RandomForest':
                 test_with_prediction, imp_features, accu = trainObj.randomforest_train(train_data, test_data)
-                long_only_return, short_only_return, long_short_return, _, _ = self.construction(test_with_prediction,
-                                                                                                 quantiles)
+                long_only_return, short_only_return, long_short_return, long, short = self.construction(
+                    test_with_prediction,
+                    quantiles,valuation,filsterStocks)
                 dt = test_data['public_date'].unique()[0]
                 # print(long_only_return, short_only_return, long_short_return)
-                returns_dict[dt] = [long_only_return, short_only_return, long_short_return]
+                returns_dict[dt] = [long_only_return, short_only_return, long_short_return, len(long), len(short)]
                 feature_imp_dict[dt] = imp_features
                 op_up_acc_dict[dt] = accu
                 date = date + pd.DateOffset(months=1)
@@ -656,28 +650,23 @@ print(reg_df.shape)
 train = Training(reg_df)
 port = Portfolio(price_df)
 
-startDate = pd.to_datetime('20001028', format='%Y%m%d')
-endDate = pd.to_datetime('20171128', format='%Y%m%d')
-# endDate = pd.to_datetime('20000428',format='%Y%m%d')
+startDate = pd.to_datetime('20000128', format='%Y%m%d')
+#endDate = pd.to_datetime('20171128', format='%Y%m%d')
+endDate = pd.to_datetime('20000428',format='%Y%m%d')
 train_window = 12  # in months
 test_windon = 1  # in months
 interpolation = 'linear'
 price_buckets = 'five_bucket'
 portfolio_buckets = [-2, 2]
-algos = ['Combination']
+algos = ['AdaBoost']
+valuation = 'mean'
+filterStocks = 'probability'
 # algos = algos[1:]
 for algo in algos:
     print(algo)
     returns_df, feature_imp, accuracy_df = port.returns(train, startDate, endDate, train_window, test_windon,
-                                                        price_buckets, portfolio_buckets, algo, interpolation)
-    returns_df.to_csv('./Results/' + algo + '_' + interpolation + '_returns.csv')
-    feature_imp.to_csv('./Results/' + algo + '_' + interpolation + '_feature_importance.csv')
-    accuracy_df.to_csv('./Results/' + algo + '_' + interpolation + '_accuracy.csv')
+                                                        price_buckets, portfolio_buckets, algo, interpolation,valuation,filterStocks)
+    returns_df.to_csv('./Results/' + algo + '_'+valuation+'_'+filterStocks+'_' + interpolation + '_returns.csv')
+    feature_imp.to_csv('./Results/' + algo + '_'+valuation+'_'+filterStocks+'_' + interpolation + '_feature_importance.csv')
+    accuracy_df.to_csv('./Results/' + algo + '_'+valuation+'_'+filterStocks+'_' + interpolation + '_accuracy.csv')
     # print(returns_df)
-
-p = Plot_results()
-p.plot_benchmark_aqr()
-p.plot_bench_results()
-p.plot_our_results(returns_df)
-p.plot_combined(returns_df,pd.to_datetime('20150201',format='%Y%m%d'),pd.to_datetime('20150531',format='%Y%m%d'))
-
