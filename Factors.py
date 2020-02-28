@@ -4,6 +4,8 @@ from pdb import set_trace
 from sklearn.metrics import confusion_matrix
 import matplotlib.pyplot as plt
 import os
+from collections import defaultdict
+
 
 class Factors:
     def __init__(self):
@@ -68,6 +70,8 @@ class Factors:
 
 
 class PriceData:
+    global ticker_list
+
     """
     Class to download and transform stock and factor data
     """
@@ -79,12 +83,16 @@ class PriceData:
         return pd.read_csv(self.filepath)
 
     def calc_monthly_price(self, filepath):
+        global ticker_list
         price_df = self.download_data(filepath)
         price_df = price_df[['TICKER', 'date', 'PRC']]
-        price_df['date'] = pd.to_datetime(price_df['date'], format='%Y%m%d')
-        price_df['ret'] = price_df.groupby(['TICKER'], as_index=False).PRC.pct_change().shift(periods=-1)
+        ticker_list = price_df['TICKER'].unique()
+        price_df['date'] = pd.to_datetime(price_df['date'], format='%Y-%m-%d')
+        price_df['ret'] = price_df.groupby(['TICKER'], as_index=False).PRC.pct_change()
+        for tick in ticker_list:
+            price_df.loc[price_df['TICKER'] == str(tick), 'ret'] = price_df[price_df['TICKER'] == str(tick)].ret.shift(
+                periods=-1)
         price_df.dropna(how='any', axis=0, inplace=True)
-
         # check for later if median is negative in a month
         first_quantile = price_df.groupby(['date'], as_index=True)['ret'].quantile(0.2)
         first_quantile.rename(columns={"ret": 'first_quantile'}, inplace=True)
@@ -125,8 +133,12 @@ class PriceData:
         price_df.loc[price_df.ret >= price_df.med_ret, 'two_bucket'] = 1
         price_df.loc[price_df.ret < price_df.med_ret, 'two_bucket'] = -1
         price_df.reset_index(inplace=True, drop=True)
-        price_df['3M_mom'] = price_df.groupby(['TICKER'], as_index=False).ret.rolling(3, min_periods=3).sum().reset_index(0, drop=True)
-        price_df['12M_mom'] = price_df.groupby(['TICKER'], as_index=False).ret.rolling(12, min_periods=12).sum().reset_index(0, drop=True)
+        price_df['3M_mom'] = price_df.groupby(['TICKER'], as_index=False).ret.rolling(3,
+                                                                                      min_periods=3).sum().reset_index(
+            0, drop=True)
+        price_df['12M_mom'] = price_df.groupby(['TICKER'], as_index=False).ret.rolling(12,
+                                                                                       min_periods=12).sum().reset_index(
+            0, drop=True)
         price_df['date'] = pd.to_datetime(price_df['date'])
         price_df['month'] = price_df['date'].dt.month
         price_df['year'] = price_df['date'].dt.year
@@ -144,8 +156,10 @@ class Training:
         self.data = data
 
     def get_cleaned_date(self, startDate, trainWindow, testWindow, bucket='two_bucket', interpolation='linear'):
-        path_train = "./TrainData/trainData_" + str(startDate.date()) + "_" + str(trainWindow) + "_" + str(testWindow) + "_" + interpolation + ".csv"
-        path_test = "./TestData/testData_" + str(startDate.date()) + "_" + str(trainWindow) + "_" + str(testWindow) + "_" + interpolation + ".csv"
+        path_train = "./TrainData/trainData_" + str(startDate.date()) + "_" + str(trainWindow) + "_" + str(
+            testWindow) + "_" + interpolation + ".csv"
+        path_test = "./TestData/testData_" + str(startDate.date()) + "_" + str(trainWindow) + "_" + str(
+            testWindow) + "_" + interpolation + ".csv"
 
         if not os.path.exists("./TrainData"):
             os.mkdir("./TrainData")
@@ -159,11 +173,13 @@ class Training:
             return train_data, test_data
         else:
 
-            data_processed = self.data[(self.data['public_date'] >= startDate) & (self.data['public_date'] < (startDate + pd.DateOffset(months=(trainWindow + testWindow))))]
+            data_processed = self.data[(self.data['public_date'] >= startDate) & (
+                        self.data['public_date'] < (startDate + pd.DateOffset(months=(trainWindow + testWindow))))]
 
             # linear interpolation
             if interpolation == 'linear':
-                data_processed = data_processed.groupby('Ticker', as_index=False).apply(lambda group: group.interpolate(method='linear'))
+                data_processed = data_processed.groupby('Ticker', as_index=False).apply(
+                    lambda group: group.interpolate(method='linear'))
 
             # updating NA by moving in line with industry average
             if interpolation == 'trend':
@@ -178,8 +194,10 @@ class Training:
                     # print(col)
                     df2 = pd.DataFrame()
                     df2['Ticker'] = data_processed['Ticker']
-                    df2['avg'] = data_processed.groupby(['Industry', 'public_date'])[col].transform(lambda x: x.median())
-                    df2['ratio'] = data_processed.groupby(['Industry', 'public_date'])[col].transform(lambda x: x / x.median())
+                    df2['avg'] = data_processed.groupby(['Industry', 'public_date'])[col].transform(
+                        lambda x: x.median())
+                    df2['ratio'] = data_processed.groupby(['Industry', 'public_date'])[col].transform(
+                        lambda x: x / x.median())
                     df2 = df2.groupby('Ticker', as_index=False).fillna(method='ffill')
                     df2 = df2.groupby('Ticker', as_index=False).fillna(method='backfill')
                     data_processed[col] = df2['avg'] * df2['ratio']
@@ -203,9 +221,14 @@ class Training:
                 for ticker in empty_tickers:
                     # print(col, ticker)
                     ind = data_processed[data_processed['Ticker'] == ticker]['Industry'].head(1).values[0]
-                    data_processed.loc[data_processed[data_processed['Ticker'] == ticker].index.tolist(), col] = data_processed[data_processed['Industry'] == ind][col].median()
-            train_data = data_processed[(data_processed['public_date'] >= startDate) & (data_processed['public_date'] < (startDate + pd.DateOffset(months=trainWindow)))]
-            test_data = data_processed[(data_processed['public_date'] >= (startDate + pd.DateOffset(months=trainWindow))) & (data_processed['public_date'] < (startDate + pd.DateOffset(months=(trainWindow + testWindow))))]
+                    data_processed.loc[data_processed[data_processed['Ticker'] == ticker].index.tolist(), col] = \
+                    data_processed[data_processed['Industry'] == ind][col].median()
+            train_data = data_processed[(data_processed['public_date'] >= startDate) & (
+                        data_processed['public_date'] < (startDate + pd.DateOffset(months=trainWindow)))]
+            test_data = data_processed[
+                (data_processed['public_date'] >= (startDate + pd.DateOffset(months=trainWindow))) & (
+                            data_processed['public_date'] < (
+                                startDate + pd.DateOffset(months=(trainWindow + testWindow))))]
 
             train_data.drop_duplicates(inplace=True)
             test_data.drop_duplicates(inplace=True)
@@ -218,7 +241,8 @@ class Training:
             len_after = train_data.shape[0]
 
             if float((len_before - len_after) / len_before) > 0.25:
-                print('Data dropped significantly. Intial data=' + str(len_before) + ' and data fater=' + str(len_after))
+                print(
+                    'Data dropped significantly. Intial data=' + str(len_before) + ' and data fater=' + str(len_after))
 
             train_data.to_csv(path_train)
             test_data.to_csv(path_test)
@@ -364,6 +388,14 @@ class Portfolio:
     def __init__(self, price_data):
         self.price_df = price_data
 
+    def get_transaction_costs(self, prev_stocks, curr_stocks):
+        global ticker_list
+        tr_cost_rate = 0.0001  # assumed 0.1% transaction cost for either buy or sell
+        tr_cost = 0
+        for x in ticker_list:
+            tr_cost += abs(curr_stocks[x] - prev_stocks[x]) * tr_cost_rate
+        return tr_cost
+
     def construction(self, test_data, quantiles):
         all_long = test_data[test_data['prediction'].isin([a for a in quantiles if a > 0])]
         all_long = all_long[all_long['predict_prob'] > all_long['predict_prob'].quantile(0.8)]
@@ -384,18 +416,75 @@ def returns(self, trainObj, startDate, EndDate, trainWindow, testWindow, bucket=
         feature_imp_dict = {}
         op_up_acc_dict = {}
         date = startDate
+        prev_stocks = defaultdict(int)
+        port_val = 1
         while (date <= EndDate):
             print(date)
+            curr_stocks = defaultdict(int)
             train_data, test_data = trainObj.get_cleaned_date(date, trainWindow, testWindow, bucket, interpolation)
-            if Algo == 'AdaBoost':
-                test_with_prediction, imp_features, accu = trainObj.adaBoost_train(train_data, test_data)
-                long_only_return, short_only_return, long_short_return, _, _ = self.construction(test_with_prediction,
-                                                                                                 quantiles)
+            if Algo == 'Combination':
+                test_a, _, _ = trainObj.adaBoost_train(train_data, test_data)
+                test_g, _, _ = trainObj.gradientBoost_train(train_data, test_data)
+                test_r, _, _ = trainObj.randomforest_train(train_data, test_data)
+                tmp = pd.merge(test_a[['Ticker', 'prediction']], test_g[['Ticker', 'prediction']], on=['Ticker'],
+                               how='inner')
+                tmp = pd.merge(tmp, test_r[['Ticker', 'prediction']], on=['Ticker'], how='inner')
+                tmp['All3'] = -10
+                tmp['2same'] = -10
+                for i in range(0, tmp.shape[0]):
+                    if ((tmp.loc[i, 'prediction_x'] == tmp.loc[i, 'prediction_y']) & (
+                            tmp.loc[i, 'prediction_x'] == tmp.loc[i, 'prediction'])):
+                        tmp.loc[i, 'All3'] = tmp.loc[i, 'prediction_x']
+                    if ((tmp.loc[i, 'prediction_x'] == tmp.loc[i, 'prediction_y']) | (
+                            tmp.loc[i, 'prediction_x'] == tmp.loc[i, 'prediction']) | (
+                            tmp.loc[i, 'prediction'] == tmp.loc[i, 'prediction_y'])):
+                        if (tmp.loc[i, 'prediction_x'] == tmp.loc[i, 'prediction_y']):
+                            tmp.loc[i, '2same'] = tmp.loc[i, 'prediction_x']
+                        else:
+                            tmp.loc[i, '2same'] = tmp.loc[i, 'prediction']
+                tmp.drop(columns=['prediction_y', 'prediction_x', 'prediction'], inplace=True)
+                tmp.rename(columns={'All3': 'prediction'} if all_combined else {'2same': 'prediction'}, inplace=True)
+                tmp['month'] = test_a['month']
+                tmp['year'] = test_a['year']
+                long_only_return, short_only_return, long_short_return, long, short = self.construction(tmp,
+                                                                                                        quantiles,
+                                                                                                        port_val)
+                print(long)
                 dt = test_data['public_date'].unique()[0]
                 # print(long_only_return, short_only_return, long_short_return)
-                returns_dict[dt] = [long_only_return, short_only_return, long_short_return]
+                for x in long:
+                    curr_stocks[x] = 1
+                for x in short:
+                    curr_stocks[x] = -1
+                tr_cost = self.get_transaction_costs(prev_stocks, curr_stocks)
+                returns_dict[dt] = [long_only_return, short_only_return, long_short_return - tr_cost, len(long),
+                                    len(short)]
+                prev_stocks = curr_stocks
+                port_val = long_only_return
+                print(port_val)
+                # set_trace()
+                date = date + pd.DateOffset(months=1)
+
+            if Algo == 'AdaBoost':
+                test_with_prediction, imp_features, accu = trainObj.adaBoost_train(train_data, test_data)
+                long_only_return, short_only_return, long_short_return, long, short = self.construction(
+                    test_with_prediction,
+                    quantiles, port_val)
+                dt = test_data['public_date'].unique()[0]
+                # print(long_only_return, short_only_return, long_short_return)
+                for x in long:
+                    curr_stocks[x] = 1
+                for x in short:
+                    curr_stocks[x] = -1
+                tr_cost = self.get_transaction_costs(prev_stocks, curr_stocks)
+                returns_dict[dt] = [long_only_return, short_only_return, long_short_return - tr_cost, len(long),
+                                    len(short)]
                 feature_imp_dict[dt] = imp_features
                 op_up_acc_dict[dt] = accu
+                prev_stocks = curr_stocks
+                port_val = long_only_return
+                print(port_val)
+                # set_trace()
                 date = date + pd.DateOffset(months=1)
 
             if Algo == 'GradientBoost':
@@ -430,7 +519,8 @@ def returns(self, trainObj, startDate, EndDate, trainWindow, testWindow, bucket=
                 op_up_acc_dict[dt] = accu
                 date = date + pd.DateOffset(months=1)
 
-        return pd.DataFrame.from_dict(returns_dict, orient='index', columns=['Long_Only', 'Short_Only', 'Long_Short']), \
+        return pd.DataFrame.from_dict(returns_dict, orient='index',
+                                      columns=['Long_Only', 'Short_Only', 'Long_Short', 'Num Long', 'Num Short']), \
                pd.DataFrame.from_dict(feature_imp_dict, orient='index'), \
                pd.DataFrame.from_dict(op_up_acc_dict, orient='index')
 
@@ -482,28 +572,30 @@ class Plot_results:
 
     def plot_benchmark_aqr(self):
         cum_ret = self.u.get_cumulative_returns_aqr('AQR_Val_Mom.csv', 'Treasury_1M.csv')
-        plt.figure(figsize=(20, 10))
-        plt.plot(cum_ret['Date_x'], cum_ret['Cum_Val'], color='blue', label='Value')
-        plt.plot(cum_ret['Date_x'], cum_ret['Cum_Mom'], color='red', label='Mom')
-        plt.legend()
-        plt.title('Aqr Mom Factor Returns', fontsize=18)
-        plt.show()
+        fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(20, 10))
+        xticks = pd.to_datetime(cum_ret['Date_x'])
+        ax.plot(xticks, cum_ret['Cum_Val'], color='blue', label='Value')
+        ax.plot(xticks, cum_ret['Cum_Mom'], color='red', label='Mom')
+        ax.legend()
+        ax.set_title('Aqr Mom Factor Returns', fontsize=18)
+        fig.tight_layout()
 
     def plot_our_results(self, returns):
         returns = self.u.get_cumulative_returns_ours(returns)
-        plt.figure(figsize=(20, 10))
-        plt.plot(returns.index.values, returns['Cum_L'], color='green', label='Long Only')
-        plt.plot(returns.index.values, returns['Cum_S'], color='cyan', label='Short Only')
-        plt.plot(returns.index.values, returns['Cum_LS'], color='magenta', label='Long_Short')
-        plt.legend()
-        plt.title('Aqr Mom Factor Returns', fontsize=18)
-        plt.show()
-        print(returns)
+        fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(20, 10))
+        xticks = pd.to_datetime(returns.index.values)
+        ax.plot(xticks, (returns['Cum_L']), color='green', label='Long Only')
+        ax.plot(xticks, (returns['Cum_S']), color='cyan', label='Short Only')
+        ax.plot(xticks, (returns['Cum_LS']), color='magenta', label='Long_Short')
+        ax.legend()
+        ax.set_title('Our returns', fontsize=18)
+        fig.tight_layout()
 
     def plot_bench_results(self):
         result = self.u.benchmark_portfolio(me_ind=1, ia_ind=1, roe_ind=1, year=1967, month=1)
-        plt.figure(figsize=(10, 10))
-        plt.plot(result.date, result.cum_ret, color='green', label='benchmark_portfolio')
+        fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(20, 10))
+        xticks = pd.to_datetime(result.date)
+        ax.plot(xticks, result.cum_ret, color='green', label='benchmark_portfolio')
 
     def plot_combined(self, returns, start_dt, end_dt):
         cum_ret_benchmark = self.u.get_cumulative_returns_aqr('AQR_Val_Mom.csv', 'Treasury_1M.csv', start_dt, end_dt)
@@ -516,19 +608,20 @@ class Plot_results:
         returns_t['year'] = returns_t['index'].dt.year
         df = pd.merge(cum_ret_benchmark, returns_t, on=['year', 'month'], how='inner')
         set_trace()
-        plt.figure(figsize=(20, 10))
-        plt.plot(df['Date_x'], df['Cum_Val'], marker='o', label='AQR Value')
-        plt.plot(df['Date_x'], df['Cum_Mom'], marker='o', label='AQR Mom')
-        plt.plot(df['Date_x'], df['Cum_L'], marker='o', label='Long_Only')
-        plt.plot(df['Date_x'], df['Cum_S'], marker='o', label='Short_Only')
-        plt.plot(df['Date_x'], df['Cum_LS'], marker='o', label='Long_Short')
+        fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(20, 10))
+        xticks = pd.to_datetime(cum_ret['Date_x'])
+        ax.plot(xticks, df['Cum_Val'], marker='o', label='AQR Value')
+        ax.plot(xticks, df['Cum_Mom'], marker='o', label='AQR Mom')
+        ax.plot(xticks, df['Cum_L'], marker='o', label='Long_Only')
+        ax.plot(xticks, df['Cum_S'], marker='o', label='Short_Only')
+        ax.plot(xticks, df['Cum_LS'], marker='o', label='Long_Short')
 
-        plt.legend()
-        plt.title('Cumulative Returns', fontsize=18)
-        plt.show()
+        ax.legend()
+        ax.set_title('Cumulative Returns', fontsize=18)
+        fig.tight_layout()
 
 
-price_filepath = 'price_data.csv'
+price_filepath = 'price_data_yahoo.csv'
 data = PriceData(price_filepath)
 price_df = data.calc_monthly_price(price_filepath)
 
@@ -536,38 +629,32 @@ factors = Factors()
 factors.combine_data(0)
 f = factors.get_factors_df()
 
-reg_df = pd.merge(f,price_df,left_on =['Ticker','year','month'],right_on=['TICKER','year','month'],how='inner')
+reg_df = pd.merge(f, price_df, left_on=['Ticker', 'year', 'month'], right_on=['TICKER', 'year', 'month'], how='inner')
 print(reg_df.shape)
-
-#train_data, test_data = train.get_cleaned_date(pd.to_datetime('28-02-2014'), 12, 1, 'five_bucket')
-#test_with_prediction = train.adaBoost_train(train_data, test_data)
-#port = Portfolio(price_df)
-#long_only_return, short_only_return, long_short_return,_,_ = port.construction(test_with_prediction, [-2,2])
-
-
+reg_df.drop_duplicates(subset=['Ticker', 'year', 'month'], inplace=True)
+print(reg_df.shape)
 
 train = Training(reg_df)
 port = Portfolio(price_df)
-startDate = pd.to_datetime('20150201',format='%Y%m%d')
-endDate = pd.to_datetime('20150531',format='%Y%m%d')
-train_window = 12 #in months
-test_window = 1 #in months
+
+startDate = pd.to_datetime('20001028', format='%Y%m%d')
+endDate = pd.to_datetime('20171128', format='%Y%m%d')
+# endDate = pd.to_datetime('20000428',format='%Y%m%d')
+train_window = 12  # in months
+test_windon = 1  # in months
 interpolation = 'linear'
 price_buckets = 'five_bucket'
-portfolio_buckets = [-2,2]
-#algos = ['AdaBoost','GradientBoost','RandomForest']
-algos = ['AdaBoost']
-
-#algos = algos[1:]
+portfolio_buckets = [-2, 2]
+algos = ['Combination']
+# algos = algos[1:]
 for algo in algos:
     print(algo)
-    returns_df,feature_imp,accuracy_df = port.returns(train, startDate, endDate, train_window, test_window, price_buckets, portfolio_buckets, algo, interpolation)
-    returns_df.to_csv('./Results/' +algo+ '_returns.csv')
-    feature_imp.to_csv('./Results/' +algo+ '_feature_importance.csv')
-    accuracy_df.to_csv('./Results/' +algo+ '_accuracy.csv')
-    #print(returns_df)
-
-
+    returns_df, feature_imp, accuracy_df = port.returns(train, startDate, endDate, train_window, test_windon,
+                                                        price_buckets, portfolio_buckets, algo, interpolation)
+    returns_df.to_csv('./Results/' + algo + '_' + interpolation + '_returns.csv')
+    feature_imp.to_csv('./Results/' + algo + '_' + interpolation + '_feature_importance.csv')
+    accuracy_df.to_csv('./Results/' + algo + '_' + interpolation + '_accuracy.csv')
+    # print(returns_df)
 
 p = Plot_results()
 p.plot_benchmark_aqr()
