@@ -431,9 +431,7 @@ class Portfolio:
                 self.price_df['TICKER'].isin(stocks_long))]['ret'].mean()
             ret_short_only = -1 * self.price_df[(self.price_df['month'] == month) & (self.price_df['year'] == year) & (
                 self.price_df['TICKER'].isin(stocks_short))]['ret'].mean()
-            return ret_long_only, ret_short_only, (
-                        len(stocks_long) * ret_long_only + len(stocks_short) * ret_short_only) / (
-                               len(stocks_short) + len(stocks_long)), stocks_long, stocks_short
+            return ret_long_only, ret_short_only, (len(stocks_long) * ret_long_only + len(stocks_short) * ret_short_only) / (len(stocks_short) + len(stocks_long)), stocks_long, stocks_short
         elif valuation == 'market cap':
             long_filtered = self.price_df[(self.price_df['month'] == month) & (self.price_df['year'] == year) & (self.price_df['TICKER'].isin(stocks_long))]
             short_filtered = self.price_df[(self.price_df['month'] == month) & (self.price_df['year'] == year) & (self.price_df['TICKER'].isin(stocks_short))]
