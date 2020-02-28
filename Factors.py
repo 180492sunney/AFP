@@ -277,10 +277,15 @@ class Training:
         # print(train_y.shape)
         # print(test_y.shape)
         predict_df = test_data.copy()
-        classifier = AdaBoostClassifier(DecisionTreeClassifier(max_depth=1), n_estimators=200, random_state=0)
+        classifier = AdaBoostClassifier(DecisionTreeClassifier(max_depth=1), n_estimators=200)
         classifier.fit(train_X, train_y)
         predictions = classifier.predict(test_X)
         predict_df['prediction'] = predictions
+        probabilities = classifier.predict_proba(test_X)
+        prob = []
+        for idx, val in enumerate(predictions):
+            prob.append(probabilities[idx][val+2])
+        predict_df['predict_prob'] = prob
         cf = confusion_matrix(test_y, predictions)
         op_accuracy = cf[0][0] / sum(cf[0])
         up_accuracy = cf[-1][-1] / sum(cf[-1])
@@ -305,10 +310,15 @@ class Training:
         # print(train_y.shape)
         # print(test_y.shape)
         predict_df = test_data.copy()
-        classifier = GradientBoostingClassifier(max_depth=1, n_estimators=200, random_state=0)
+        classifier = GradientBoostingClassifier(max_depth=1, n_estimators=200)
         classifier.fit(train_X, train_y)
         predictions = classifier.predict(test_X)
         predict_df['prediction'] = predictions
+        probabilities = classifier.predict_proba(test_X)
+        prob = []
+        for idx, val in enumerate(predictions):
+            prob.append(probabilities[idx][val+2])
+        predict_df['predict_prob'] = prob
         cf = confusion_matrix(test_y, predictions)
         op_accuracy = cf[0][0] / sum(cf[0])
         up_accuracy = cf[-1][-1] / sum(cf[-1])
@@ -332,10 +342,15 @@ class Training:
         # print(train_y.shape)
         # print(test_y.shape)
         predict_df = test_data.copy()
-        classifier = RandomForestClassifier(criterion='gini', max_depth=1, n_estimators=200, random_state=0)
+        classifier = RandomForestClassifier(criterion='gini', max_depth=1, n_estimators=200)
         classifier.fit(train_X, train_y)
         predictions = classifier.predict(test_X)
         predict_df['prediction'] = predictions
+        probabilities = classifier.predict_proba(test_X)
+        prob = []
+        for idx, val in enumerate(predictions):
+            prob.append(probabilities[idx][val+2])
+        predict_df['predict_prob'] = prob
         cf = confusion_matrix(test_y, predictions)
         op_accuracy = cf[0][0] / sum(cf[0])
         up_accuracy = cf[-1][-1] / sum(cf[-1])
@@ -373,18 +388,6 @@ class Portfolio:
     def __init__(self, price_data):
         self.price_df = price_data
 
-    def construction(self, test_data, quantiles, port_val):
-        stocks_long = list(test_data[test_data['prediction'].isin([a for a in quantiles if a > 0])]['Ticker'].unique())
-        stocks_short = list(test_data[test_data['prediction'].isin([a for a in quantiles if a < 0])]['Ticker'].unique())
-        month, year = test_data['month'].unique()[0], test_data['year'].unique()[0]
-        ret_long_only = price_df[(self.price_df['month'] == month) & (self.price_df['year'] == year) & (
-            self.price_df['TICKER'].isin(stocks_long))]['ret'].mean()
-        ret_short_only = -1 * price_df[(self.price_df['month'] == month) & (self.price_df['year'] == year) & (
-            self.price_df['TICKER'].isin(stocks_short))]['ret'].mean()
-        return ret_long_only, ret_short_only, (
-                    len(stocks_long) * ret_long_only + len(stocks_short) * ret_short_only) / (
-                           len(stocks_short) + len(stocks_long)), stocks_long, stocks_short
-
     def get_transaction_costs(self, prev_stocks, curr_stocks):
         global ticker_list
         tr_cost_rate = 0.0001  # assumed 0.1% transaction cost for either buy or sell
@@ -393,8 +396,22 @@ class Portfolio:
             tr_cost += abs(curr_stocks[x] - prev_stocks[x]) * tr_cost_rate
         return tr_cost
 
-    def returns(self, trainObj, startDate, EndDate, trainWindow, testWindow, bucket='five_bucket', quantiles=[-2, 2],
-                Algo='AdaBoost', interpolation='linear', all_combined=True):
+    def construction(self, test_data, quantiles):
+        all_long = test_data[test_data['prediction'].isin([a for a in quantiles if a > 0])]
+        all_long = all_long[all_long['predict_prob'] > all_long['predict_prob'].quantile(0.8)]
+        stocks_long = list(all_long['Ticker'].unique())
+        # stocks_long = list(test_data[test_data['prediction'].isin([a for a in quantiles if a > 0])]['Ticker'].unique())
+        all_short = test_data[test_data['prediction'].isin([a for a in quantiles if a < 0])]
+        all_short = all_short[all_short['predict_prob'] > all_short['predict_prob'].quantile(0.8)]
+        stocks_short = list(all_short['Ticker'].unique())
+        # stocks_short = list(test_data[test_data['prediction'].isin([a for a in quantiles if a < 0])]['Ticker'].unique())
+        month, year = test_data['month'].unique()[0], test_data['year'].unique()[0]
+        ret_long_only = price_df[(self.price_df['month'] == month) & (self.price_df['year'] == year) & (self.price_df['TICKER'].isin(stocks_long))]['ret'].mean()
+        ret_short_only = -1 * price_df[(self.price_df['month'] == month) & (self.price_df['year'] == year) & (self.price_df['TICKER'].isin(stocks_short))]['ret'].mean()
+        return ret_long_only, ret_short_only, (len(stocks_long) * ret_long_only + len(stocks_short) * ret_short_only) / (len(stocks_short) + len(stocks_long)), stocks_long, stocks_short
+
+
+def returns(self, trainObj, startDate, EndDate, trainWindow, testWindow, bucket='five_bucket', quantiles=[-2, 2], Algo='AdaBoost', interpolation='linear'):
         returns_dict = {}
         feature_imp_dict = {}
         op_up_acc_dict = {}
@@ -619,6 +636,7 @@ print(reg_df.shape)
 
 train = Training(reg_df)
 port = Portfolio(price_df)
+
 startDate = pd.to_datetime('20001028', format='%Y%m%d')
 endDate = pd.to_datetime('20171128', format='%Y%m%d')
 # endDate = pd.to_datetime('20000428',format='%Y%m%d')
@@ -637,3 +655,10 @@ for algo in algos:
     feature_imp.to_csv('./Results/' + algo + '_' + interpolation + '_feature_importance.csv')
     accuracy_df.to_csv('./Results/' + algo + '_' + interpolation + '_accuracy.csv')
     # print(returns_df)
+
+p = Plot_results()
+p.plot_benchmark_aqr()
+p.plot_bench_results()
+p.plot_our_results(returns_df)
+p.plot_combined(returns_df,pd.to_datetime('20150201',format='%Y%m%d'),pd.to_datetime('20150531',format='%Y%m%d'))
+
