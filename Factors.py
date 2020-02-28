@@ -396,19 +396,38 @@ class Portfolio:
             tr_cost += abs(curr_stocks[x] - prev_stocks[x]) * tr_cost_rate
         return tr_cost
 
-    def construction(self, test_data, quantiles):
-        all_long = test_data[test_data['prediction'].isin([a for a in quantiles if a > 0])]
-        all_long = all_long[all_long['predict_prob'] > all_long['predict_prob'].quantile(0.8)]
-        stocks_long = list(all_long['Ticker'].unique())
-        # stocks_long = list(test_data[test_data['prediction'].isin([a for a in quantiles if a > 0])]['Ticker'].unique())
-        all_short = test_data[test_data['prediction'].isin([a for a in quantiles if a < 0])]
-        all_short = all_short[all_short['predict_prob'] > all_short['predict_prob'].quantile(0.8)]
-        stocks_short = list(all_short['Ticker'].unique())
-        # stocks_short = list(test_data[test_data['prediction'].isin([a for a in quantiles if a < 0])]['Ticker'].unique())
+    def construction(self, test_data, quantiles, valuation='mean', filterStocks='no rule'):
+
+        if filterStocks == 'no rule':
+            stocks_long = list(test_data[test_data['prediction'].isin([a for a in quantiles if a > 0])]['Ticker'].unique())
+            stocks_short = list(test_data[test_data['prediction'].isin([a for a in quantiles if a < 0])]['Ticker'].unique())
+        elif filterStocks == 'probability':
+            all_long = test_data[test_data['prediction'].isin([a for a in quantiles if a > 0])]
+            all_long = all_long[all_long['predict_prob'] > all_long['predict_prob'].quantile(0.8)]
+            stocks_long = list(all_long['Ticker'].unique())
+            all_short = test_data[test_data['prediction'].isin([a for a in quantiles if a < 0])]
+            all_short = all_short[all_short['predict_prob'] > all_short['predict_prob'].quantile(0.8)]
+            stocks_short = list(all_short['Ticker'].unique())
+
         month, year = test_data['month'].unique()[0], test_data['year'].unique()[0]
-        ret_long_only = price_df[(self.price_df['month'] == month) & (self.price_df['year'] == year) & (self.price_df['TICKER'].isin(stocks_long))]['ret'].mean()
-        ret_short_only = -1 * price_df[(self.price_df['month'] == month) & (self.price_df['year'] == year) & (self.price_df['TICKER'].isin(stocks_short))]['ret'].mean()
-        return ret_long_only, ret_short_only, (len(stocks_long) * ret_long_only + len(stocks_short) * ret_short_only) / (len(stocks_short) + len(stocks_long)), stocks_long, stocks_short
+        if valuation == 'mean':
+            ret_long_only = price_df[(self.price_df['month'] == month) & (self.price_df['year'] == year) & (self.price_df['TICKER'].isin(stocks_long))]['ret'].mean()
+            ret_short_only = -1 * price_df[(self.price_df['month'] == month) & (self.price_df['year'] == year) & (self.price_df['TICKER'].isin(stocks_short))]['ret'].mean()
+            return ret_long_only, ret_short_only, (len(stocks_long) * ret_long_only + len(stocks_short) * ret_short_only) / (len(stocks_short) + len(stocks_long)), stocks_long, stocks_short
+        elif valuation == 'dollar neutral refreshed':
+            long_filtered = price_df[(self.price_df['month'] == month) & (self.price_df['year'] == year) & (self.price_df['TICKER'].isin(stocks_long))]
+            short_filtered = price_df[(self.price_df['month'] == month) & (self.price_df['year'] == year) & (self.price_df['TICKER'].isin(stocks_short))]
+            #port_start = 100
+            #value_long = port_start / long_filtered.shape[0]
+            #value_short = port_start / short_filtered.shape[0]
+            #long_value_end = sum((1 + long_filtered['ret']) * port_start / long_filtered.shape[0])
+            long_value_end = sum((1 + long_filtered['ret']) / long_filtered.shape[0])
+            #short_value_end = sum((1 + short_filtered['ret']) * port_start / short_filtered.shape[0])
+            short_value_end = sum((1 + short_filtered['ret']) / short_filtered.shape[0])
+            #port_end = long_value_end + (port_start - short_value_end)
+            long_short_return = long_value_end - short_value_end
+            #long_short_return = (long_value_end - short_value_end) / port_start
+            return long_filtered['ret'].mean(), -1 * short_filtered['ret'].mean(), long_short_return, stocks_long, stocks_short
 
 
 def returns(self, trainObj, startDate, EndDate, trainWindow, testWindow, bucket='five_bucket', quantiles=[-2, 2], Algo='AdaBoost', interpolation='linear',all_combined=True):
