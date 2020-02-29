@@ -82,7 +82,7 @@ class PriceData:
     def download_data(self, filepath):
         return pd.read_csv(self.filepath)
 
-    def calc_monthly_price(self, filepath):
+    def calc_monthly_price(self, filepath,shift=-1):
         global ticker_list
         price_df = self.download_data(filepath)
         price_df = price_df[['TICKER', 'date', 'PRC']]
@@ -105,7 +105,7 @@ class PriceData:
         price_df['ret'] = price_df.groupby(['TICKER'], as_index=False).PRC.pct_change()
         for tick in ticker_list:
             price_df.loc[price_df['TICKER'] == str(tick), 'ret'] = price_df[price_df['TICKER'] == str(tick)].ret.shift(
-                periods=-1)
+                periods=shift)
         price_df.dropna(how='any', axis=0, inplace=True)
         # check for later if median is negative in a month
         first_quantile = price_df.groupby(['date'], as_index=True)['ret'].quantile(0.2)
