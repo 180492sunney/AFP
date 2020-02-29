@@ -721,10 +721,10 @@ class Plot_results:
         fig.tight_layout()
 
 
-
+shift=-4
 price_filepath = 'price_data_yahoo.csv'
 data = PriceData(price_filepath)
-price_df = data.calc_monthly_price(price_filepath)
+price_df = data.calc_monthly_price(price_filepath,shift)
 
 factors = Factors()
 factors.combine_data(0)
@@ -758,7 +758,7 @@ for algo in algos:
     print(algo)
     returns_df, feature_imp, accuracy_df = port.returns(train, startDate, endDate, train_window, test_windon,
                                                         price_buckets, portfolio_buckets, algo, interpolation,valuation,filterStocks,tr_cost)
-    returns_df.to_csv('./Results/' + algo + '_'+valuation+'_'+filterStocks+'_' +str(tr_cost) + '_' + interpolation + '_returns.csv')
-    feature_imp.to_csv('./Results/' + algo + '_'+valuation+'_'+filterStocks+'_' +str(tr_cost) + '_' + interpolation + '_feature_importance.csv')
-    accuracy_df.to_csv('./Results/' + algo + '_'+valuation+'_'+filterStocks+'_'+str(tr_cost) + '_'  + interpolation + '_accuracy.csv')
+    returns_df.to_csv('./Results/' + algo + '_'+valuation+'_'+filterStocks+'_' +str(tr_cost) + '_' + interpolation + '_returns_lagged.csv')
+    feature_imp.to_csv('./Results/' + algo + '_'+valuation+'_'+filterStocks+'_' +str(tr_cost) + '_' + interpolation + '_feature_importance_lagged.csv')
+    accuracy_df.to_csv('./Results/' + algo + '_'+valuation+'_'+filterStocks+'_'+str(tr_cost) + '_'  + interpolation + '_accuracy_lagged.csv')
     # print(returns_df)
